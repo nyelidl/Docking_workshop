@@ -2,6 +2,8 @@
 
 This repository provides a **hands-on, beginner-friendly workflow** for molecular docking using **AutoDock Vina** in **Google Colab**, designed especially for **undergraduate workshops** and newcomers to computer-aided drug design.
 
+[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/drive/1jShXQkN3-fCKQ5g92LgL_2UGgiYUv4T7?usp=sharing)
+
 ## 🖼 Workflow Overview
 
 ![Docking workflow](https://github.com/nyelidl/Docking_workshop/blob/main/WS_docking.png)
