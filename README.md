@@ -2,6 +2,14 @@
 
 This repository provides a **hands-on, beginner-friendly workflow** for molecular docking using **AutoDock Vina** in **Google Colab**, designed especially for **undergraduate workshops** and newcomers to computer-aided drug design.
 
+## 🖼 Workflow Overview
+
+![Docking workflow](https://github.com/nyelidl/Docking_workshop/blob/main/WS_docking.png)
+
+This figure summarizes the full pipeline:
+
+**Ligand Prep → Receptor Prep → Docking → Pose Extraction → Score Analysis → Best Pose → (Optional MD) → Visualization**
+
 Students can follow a complete pipeline, from raw structures to visualization:
 
 1. **Ligand preparation**  
