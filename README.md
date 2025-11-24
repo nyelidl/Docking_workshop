@@ -54,7 +54,7 @@ Students can follow a complete pipeline, from raw structures to visualization:
 
 ## 🚀 Further Analysis
 
-- Upload your **receptor** (`rec.pdb`) and **ligand**.
+- Upload your **receptor** (`rec.pdb`) and **ligand** in DOCKPOSES.
 - Run docking, extract poses, and analyze Vina scores.
 - Download all results (poses, scores, receptor, ligand) as a ZIP file.
 - Visualize the docked complex using **Proteins.plus** for interactive inspection.
