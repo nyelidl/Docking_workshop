@@ -59,6 +59,6 @@ Students can follow a complete pipeline, from raw structures to visualization:
 - Download all results (poses, scores, receptor, ligand) as a ZIP file.
 - Visualize the docked complex using **Proteins.plus** for interactive inspection.
 
-[![Open In Colab with clean version](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/drive/1TBXO8Dp37CbXPqto3atvZVxsashXYP7Y?usp=sharing)
+**Clean version >** [![Open In Colab ](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/drive/1TBXO8Dp37CbXPqto3atvZVxsashXYP7Y?usp=sharing)
 
 
