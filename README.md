@@ -10,6 +10,8 @@ Designed especially for:
 
 [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/drive/1jShXQkN3-fCKQ5g92LgL_2UGgiYUv4T7?usp=sharing)
 
+Link to [![PDF](https://img.shields.io/badge/PDF-View-red?logo=adobeacrobatreader&logoColor=white)](https://drive.google.com/uc?export=view&id=1mwavn19QK3oJnKM7fPvyq_2p70R-qiwG) for more information.
+
 ---
 
 # 🖼 Workflow Overview
