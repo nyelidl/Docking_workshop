@@ -408,8 +408,8 @@ def _receptor_section(pfx: str, wdir: Path, step_label: str = "Step 1"):
 # ──────────────────────────────────────────────────────────────────────────────
 st.markdown("# 🧬 AutoDock Vina 1.2.7 & VinaXB")
 st.markdown(
-    "Molecular docking powered by AutoDock Vina1.2.7 & VinaXB."
-    "Choose **Basic** for a single ligand, **Batch** for multiple ligands with Vina 1.2.7 or VinaXB."
+    "Molecular docking powered by **AutoDock Vina** and **VinaXBl**. "
+    "Choose **Basic** for a single ligand, **Batch** for multiple ligands with Vina or VinaXB."
 )
 if VINA_PATH is None:
     st.error(f"❌ Vina binary unavailable: {_vina_err}"); st.stop()
@@ -503,8 +503,11 @@ with tab_basic:
                 else:                                     AllChem.UFFOptimizeMolecule(mol, maxIters=500)
                 log.append("✓ Geometry optimized")
                 with Chem.SDWriter(lig_sdf) as w: w.write(mol)
-                prep = MoleculePreparation(); prep.prepare(mol)
-                with open(lig_pdbqt, "w") as f: f.write(prep.write_pdbqt_string())
+                prep = MoleculePreparation()
+                from meeko import PDBQTWriterLegacy
+                mol_setups = prep.prepare(mol)
+                pdbqt_str, _, _ = PDBQTWriterLegacy.write_string(mol_setups[0])
+                with open(lig_pdbqt, "w") as f: f.write(pdbqt_str)
                 log.append(f"✓ PDBQT: {lig_pdbqt}")
                 st.session_state.update(dict(
                     ligand_pdbqt=lig_pdbqt, ligand_sdf=lig_sdf, ligand_name=lig_name,
@@ -645,7 +648,7 @@ with tab_basic:
                 st.dataframe(df.style.background_gradient(
                     cmap="RdYlGn", subset=["Affinity (kcal/mol)"],
                     gmap=-df["Affinity (kcal/mol)"]),
-                    use_container_width=True, hide_index=True)
+                    width='stretch', hide_index=True)
         with cc:
             st.markdown("**Affinity by Pose**")
             if df is not None:
@@ -660,7 +663,7 @@ with tab_basic:
                 ax.set_ylabel("Affinity (kcal/mol)", color="#8b949e", fontsize=9)
                 ax.tick_params(colors="#8b949e", labelsize=8)
                 for sp in ax.spines.values(): sp.set_edgecolor("#30363d")
-                fig.tight_layout(); st.pyplot(fig, use_container_width=True); plt.close(fig)
+                fig.tight_layout(); st.pyplot(fig, width='stretch'); plt.close(fig)
 
         st.markdown("---")
         st.markdown("**🎬 Animated Pose Viewer**")
@@ -880,8 +883,11 @@ with tab_batch:
                 sdf_path   = str(wdir / f"{name}.sdf")
                 pdbqt_path = str(wdir / f"{name}.pdbqt")
                 with Chem.SDWriter(sdf_path) as w: w.write(mol)
-                prep = MoleculePreparation(); prep.prepare(mol)
-                with open(pdbqt_path,"w") as f: f.write(prep.write_pdbqt_string())
+                prep = MoleculePreparation()
+                from meeko import PDBQTWriterLegacy
+                mol_setups = prep.prepare(mol)
+                pdbqt_str, _, _ = PDBQTWriterLegacy.write_string(mol_setups[0])
+                with open(pdbqt_path, "w") as f: f.write(pdbqt_str)
                 return pdbqt_path, None
             except Exception as e:
                 return None, str(e)
@@ -901,8 +907,7 @@ with tab_batch:
             top = None
             for line in open(out_pdbqt):
                 ln = line.strip()
-                if (ln.startswith("REMARK VINA RESULT:") or
-                    ln.startswith("REMARK VINAXB RESULT:")):
+                if ln.startswith("REMARK VINA RESULT:"):  # VinaXB also uses this tag
                     try: top = float(ln.split()[3]); break
                     except: pass
             return out_pdbqt, out_sdf, log, top
@@ -1003,7 +1008,7 @@ with tab_batch:
         ct2, cp2 = st.columns([1, 1.6])
         with ct2:
             st.markdown("**Score Table**")
-            st.dataframe(df_res, use_container_width=True, hide_index=True)
+            st.dataframe(df_res, width='stretch', hide_index=True)
         with cp2:
             st.markdown(f"**Top Score per Ligand** — {engine_used}")
             if not ok_df.empty:
@@ -1029,7 +1034,7 @@ with tab_batch:
                 for sp in ax.spines.values(): sp.set_edgecolor("#30363d")
                 ax.grid(axis="y", color="#21262d", linewidth=0.5)
                 fig.tight_layout()
-                st.pyplot(fig, use_container_width=True); plt.close(fig)
+                st.pyplot(fig, width='stretch'); plt.close(fig)
 
         st.markdown("---")
 
