@@ -1,19 +1,18 @@
 #!/usr/bin/env python3
 """
 AutoDock Vina 1.2.7 — Streamlit Docking Interface
-Single-page, top-to-bottom molecular docking workflow.
+Tabs: Basic (single ligand) | Batch (multi-ligand, Vina / VinaXB)
 """
 
 import streamlit as st
-import os, sys, subprocess, tempfile, shutil, io
+import os, sys, subprocess, tempfile, shutil, io, zipfile, re as _re
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
-import matplotlib.ticker as ticker
 from pathlib import Path
 import streamlit.components.v1 as components
 
-# ─── Page Config (must be first Streamlit call) ────────────────────────────────
+# ─── Page Config ──────────────────────────────────────────────────────────────
 st.set_page_config(
     page_title="AutoDock Vina 1.2.7",
     page_icon="🧬",
@@ -32,7 +31,7 @@ html, body, [data-testid="stAppViewContainer"] {
     font-family: 'IBM Plex Sans', sans-serif;
 }
 [data-testid="stSidebar"] { background: #161b22; }
-[data-testid="stHeader"] { background: transparent; }
+[data-testid="stHeader"]  { background: transparent; }
 
 h1 { font-family: 'IBM Plex Mono', monospace; color: #58a6ff; letter-spacing: -1px; }
 h2, h3 { font-family: 'IBM Plex Mono', monospace; color: #79c0ff; }
@@ -45,115 +44,75 @@ h2, h3 { font-family: 'IBM Plex Mono', monospace; color: #79c0ff; }
     padding: 20px 24px;
     margin-bottom: 24px;
 }
-.step-card.done { border-left-color: #3fb950; }
+.step-card.done    { border-left-color: #3fb950; }
 .step-card.running { border-left-color: #d29922; }
 
 .step-title {
     font-family: 'IBM Plex Mono', monospace;
-    font-size: 0.85rem;
-    color: #8b949e;
-    text-transform: uppercase;
-    letter-spacing: 2px;
-    margin-bottom: 4px;
+    font-size: 0.85rem; color: #8b949e;
+    text-transform: uppercase; letter-spacing: 2px; margin-bottom: 4px;
 }
 .step-heading {
     font-family: 'IBM Plex Mono', monospace;
-    font-size: 1.3rem;
-    color: #e6edf3;
-    margin-bottom: 16px;
+    font-size: 1.3rem; color: #e6edf3; margin-bottom: 16px;
 }
-
 .result-pill {
     display: inline-block;
-    background: #1f6feb22;
-    border: 1px solid #1f6feb;
-    color: #79c0ff;
-    border-radius: 20px;
-    padding: 2px 12px;
-    font-family: 'IBM Plex Mono', monospace;
-    font-size: 0.8rem;
-    margin: 2px;
+    background: #1f6feb22; border: 1px solid #1f6feb; color: #79c0ff;
+    border-radius: 20px; padding: 2px 12px;
+    font-family: 'IBM Plex Mono', monospace; font-size: 0.8rem; margin: 2px;
 }
 .success-pill {
     display: inline-block;
-    background: #23863622;
-    border: 1px solid #238636;
-    color: #3fb950;
-    border-radius: 20px;
-    padding: 4px 14px;
-    font-family: 'IBM Plex Mono', monospace;
-    font-size: 0.85rem;
+    background: #23863622; border: 1px solid #238636; color: #3fb950;
+    border-radius: 20px; padding: 4px 14px;
+    font-family: 'IBM Plex Mono', monospace; font-size: 0.85rem;
 }
 .warn-pill {
     display: inline-block;
-    background: #9e680322;
-    border: 1px solid #9e6803;
-    color: #d29922;
-    border-radius: 20px;
-    padding: 4px 14px;
-    font-family: 'IBM Plex Mono', monospace;
-    font-size: 0.85rem;
+    background: #9e680322; border: 1px solid #9e6803; color: #d29922;
+    border-radius: 20px; padding: 4px 14px;
+    font-family: 'IBM Plex Mono', monospace; font-size: 0.85rem;
 }
-
 .log-box {
-    background: #0d1117;
-    border: 1px solid #30363d;
-    border-radius: 6px;
+    background: #0d1117; border: 1px solid #30363d; border-radius: 6px;
     padding: 12px 16px;
-    font-family: 'IBM Plex Mono', monospace;
-    font-size: 0.78rem;
-    color: #8b949e;
-    max-height: 220px;
-    overflow-y: auto;
-    white-space: pre-wrap;
+    font-family: 'IBM Plex Mono', monospace; font-size: 0.78rem; color: #8b949e;
+    max-height: 220px; overflow-y: auto; white-space: pre-wrap;
 }
-
-.score-best {
-    font-family: 'IBM Plex Mono', monospace;
-    font-size: 2.4rem;
-    color: #3fb950;
-    font-weight: 600;
-}
-.score-unit {
-    font-size: 1rem;
-    color: #8b949e;
-}
-
-/* Streamlit widget overrides */
+.score-best  { font-family: 'IBM Plex Mono', monospace; font-size: 2.4rem; color: #3fb950; font-weight: 600; }
+.score-unit  { font-size: 1rem; color: #8b949e; }
 .stButton > button {
-    background: #238636;
-    color: white;
-    border: none;
-    border-radius: 6px;
-    font-family: 'IBM Plex Mono', monospace;
-    font-size: 0.88rem;
-    padding: 8px 20px;
-    transition: background 0.2s;
+    background: #238636; color: white; border: none; border-radius: 6px;
+    font-family: 'IBM Plex Mono', monospace; font-size: 0.88rem;
+    padding: 8px 20px; transition: background 0.2s;
 }
 .stButton > button:hover { background: #2ea043; }
 .stButton > button[kind="secondary"] { background: #21262d; border: 1px solid #30363d; }
 .stButton > button[kind="secondary"]:hover { background: #30363d; }
-
 .stTextInput > div > div > input,
 .stSelectbox > div > div,
 .stNumberInput > div > div > input {
-    background: #21262d !important;
-    border: 1px solid #30363d !important;
-    color: #c9d1d9 !important;
-    border-radius: 6px !important;
+    background: #21262d !important; border: 1px solid #30363d !important;
+    color: #c9d1d9 !important; border-radius: 6px !important;
     font-family: 'IBM Plex Mono', monospace !important;
 }
 .stSlider > div { color: #c9d1d9; }
 [data-baseweb="slider"] { accent-color: #58a6ff; }
-
 .stDataFrame { border: 1px solid #30363d; border-radius: 6px; }
 hr { border-color: #30363d; }
-
-/* Divider between steps */
-.step-divider {
-    border: none;
-    border-top: 1px dashed #30363d;
-    margin: 32px 0;
+.step-divider { border: none; border-top: 1px dashed #30363d; margin: 32px 0; }
+[data-testid="stTabs"] [data-baseweb="tab-list"] {
+    background: #161b22; border-bottom: 1px solid #30363d; gap: 4px;
+}
+[data-testid="stTabs"] [data-baseweb="tab"] {
+    font-family: 'IBM Plex Mono', monospace; font-size: 0.9rem;
+    color: #8b949e; background: transparent; border-radius: 6px 6px 0 0;
+    padding: 10px 20px;
+}
+[data-testid="stTabs"] [aria-selected="true"] {
+    color: #58a6ff !important; background: #0d1117 !important;
+    border-bottom: 2px solid #58a6ff !important;
 }
 </style>
 """, unsafe_allow_html=True)
@@ -161,72 +120,87 @@ hr { border-color: #30363d; }
 # ─── Session State ─────────────────────────────────────────────────────────────
 _DEFAULTS = dict(
     workdir=None,
-    # Receptor
+    # Basic tab: receptor
     pdb_token=None, raw_pdb=None, receptor_fh=None, receptor_pdbqt=None,
-    box_pdb=None, config_txt=None,
-    cx=None, cy=None, cz=None,
+    box_pdb=None, config_txt=None, cx=None, cy=None, cz=None,
     ligand_pdb_path=None, receptor_done=False, receptor_log="",
-    # Ligand
+    # Basic tab: ligand
     ligand_pdbqt=None, ligand_sdf=None, ligand_name="ELR",
     prot_smiles=None, pka_est=None, ligand_done=False, ligand_log="",
-    # Docking
+    # Basic tab: docking
     output_pdbqt=None, output_sdf=None, dock_base=None,
     docking_done=False, docking_log="",
-    # Results
     score_df=None, pose_mols=None, pose_dir=None,
+    # Batch tab: receptor (b_ prefix)
+    b_pdb_token=None, b_raw_pdb=None, b_receptor_fh=None, b_receptor_pdbqt=None,
+    b_box_pdb=None, b_config_txt=None, b_cx=None, b_cy=None, b_cz=None,
+    b_ligand_pdb_path=None, b_receptor_done=False, b_receptor_log="",
+    # Batch tab: docking
+    b_batch_done=False, b_batch_results=None, b_batch_log="",
+    b_redock_score=None, b_redock_sdf=None, b_batch_engine="VINA",
 )
 for k, v in _DEFAULTS.items():
     if k not in st.session_state:
         st.session_state[k] = v
 
-# ─── Working Directory ─────────────────────────────────────────────────────────
+# ─── Working Directories ───────────────────────────────────────────────────────
 if st.session_state.workdir is None:
     st.session_state.workdir = tempfile.mkdtemp(prefix="vina_")
-WORKDIR = Path(st.session_state.workdir)
+WORKDIR       = Path(st.session_state.workdir)
+BATCH_WORKDIR = WORKDIR / "batch"
+BATCH_WORKDIR.mkdir(exist_ok=True)
 
-# ─── Helpers ──────────────────────────────────────────────────────────────────
-def show3d(view, height=520):
-    """Render a py3Dmol view inside Streamlit — responsive width."""
+# ─── Shared Helpers ────────────────────────────────────────────────────────────
+def show3d(view, height=480):
+    """Render py3Dmol view responsively inside Streamlit."""
     try:
         from stmol import showmol
         showmol(view, height=height)
     except ImportError:
-        import re as _re
-        raw_html = view._make_html()
-        # py3Dmol hard-codes a pixel width in the generated HTML/JS;
-        # replace every occurrence so the canvas fills its container
-        # on any screen size (phone, tablet, laptop).
-        responsive_html = _re.sub(
-            r'(width\s*[:=]\s*)["\']?\d+px?["\']?',
-            r'\g<1>100%',
-            raw_html,
-        )
-        responsive_html = (
-            '<div style="width:100%;overflow:hidden">'
-            + responsive_html
-            + '</div>'
-        )
-        components.html(responsive_html, height=height, scrolling=False)
+        raw  = view._make_html()
+        resp = _re.sub(r'(width\s*[:=]\s*)["\']?\d+px?["\']?', r'\g<1>100%', raw)
+        components.html(f'<div style="width:100%;overflow:hidden">{resp}</div>',
+                        height=height, scrolling=False)
 
 def _pill(text, kind="info"):
-    cls = {"info": "result-pill", "success": "success-pill", "warn": "warn-pill"}.get(kind, "result-pill")
+    cls = {"info":"result-pill","success":"success-pill","warn":"warn-pill"}.get(kind,"result-pill")
     return f'<span class="{cls}">{text}</span>'
 
-def run_cmd(cmd, cwd=None, log=True):
-    r = subprocess.run(cmd, shell=isinstance(cmd, str), capture_output=True, text=True, cwd=cwd)
-    out = (r.stdout + r.stderr).strip()
-    return r.returncode, out
+def run_cmd(cmd, cwd=None):
+    r = subprocess.run(cmd, shell=isinstance(cmd, str),
+                       capture_output=True, text=True, cwd=cwd)
+    return r.returncode, (r.stdout + r.stderr).strip()
+
+def _rdkit_six_patch():
+    try:
+        from rdkit import six  # noqa
+    except ImportError:
+        from io import StringIO as _SIO
+        from types import ModuleType as _MT
+        import rdkit as _rdkit
+        _m = _MT("six"); _m.StringIO = _SIO; _m.PY3 = True
+        _rdkit.six = _m; sys.modules["rdkit.six"] = _m
 
 # ─── Cached Resources ──────────────────────────────────────────────────────────
-@st.cache_resource(show_spinner="⬇ Downloading Vina 1.2.7 binary…")
+@st.cache_resource(show_spinner="⬇ Downloading Vina 1.2.7…")
 def _get_vina():
     path = "/tmp/vina_1.2.7"
     if not os.path.exists(path) or os.path.getsize(path) < 100_000:
-        url = ("https://github.com/ccsb-scripps/AutoDock-Vina/releases/"
-               "download/v1.2.7/vina_1.2.7_linux_x86_64")
-        rc, out = run_cmd(["wget", "-q", url, "-O", path])
-        if rc != 0 or not os.path.exists(path):
-            return None, out
+        rc, out = run_cmd(["wget", "-q",
+            "https://github.com/ccsb-scripps/AutoDock-Vina/releases/download/"
+            "v1.2.7/vina_1.2.7_linux_x86_64", "-O", path])
+        if rc != 0: return None, out
+    os.chmod(path, 0o755)
+    return path, "ok"
+
+@st.cache_resource(show_spinner="⬇ Downloading VinaXB…")
+def _get_vinaxb():
+    path = "/tmp/vinaXB"
+    if not os.path.exists(path) or os.path.getsize(path) < 50_000:
+        rc, out = run_cmd(["wget", "-q",
+            "https://raw.githubusercontent.com/sirimullalab/vinaXB/master/linux/vinaXB",
+            "-O", path])
+        if rc != 0: return None, out
     os.chmod(path, 0o755)
     return path, "ok"
 
@@ -238,711 +212,911 @@ def _get_pka_model():
     except Exception:
         return None
 
-VINA_PATH, vina_err = _get_vina()
-PKA_MODEL = _get_pka_model()
+VINA_PATH,   _vina_err   = _get_vina()
+VINAXB_PATH, _vinaxb_err = _get_vinaxb()
+PKA_MODEL                 = _get_pka_model()
 
-# ─── Header ───────────────────────────────────────────────────────────────────
-st.markdown("# 🧬 AutoDock Vina 1.2.7")
-st.markdown(
-    "Cloud molecular docking powered by **AutoDock Vina**, **RDKit**, **Meeko**, and **OpenBabel**. "
-    "Complete each step in order — results persist as you scroll down."
-)
-
-st.markdown(
-    "🧬 Assembled code for Molecular Docking using AutoDock Vina 1.2.7 &nbsp;|&nbsp; "
-    "For questions: [kowith@ccs.tsukuba.ac.jp](mailto:kowith@ccs.tsukuba.ac.jp)  \n"
-    "This is part of the **DFDD Project**.",
-    unsafe_allow_html=True,
-)
-
-if VINA_PATH is None:
-    st.error(f"❌ Vina binary could not be downloaded. Error: {vina_err}")
-    st.stop()
-
-st.markdown(f"<div style='margin-bottom:8px'>{_pill('Vina 1.2.7 ✓', 'success')} {_pill(f'Workdir: {WORKDIR}', 'info')}</div>", unsafe_allow_html=True)
-st.markdown('<hr class="step-divider">', unsafe_allow_html=True)
+# ─── Shared receptor prep exclusion lists ─────────────────────────────────────
+_EXCLUDE_IONS   = set("HOH,WAT,DOD,SOL,NA,CL,K,CA,MG,ZN,MN,FE,CU,CO,NI,CD,HG".split(","))
+_GLYCAN_NAMES   = {"NAG","BMA","MAN","FUC","GAL","GLC","SIA","NGA","FUL","GLA","BGC"}
+_COFACTOR_NAMES = {"ATP","ADP","AMP","GTP","GDP","FAD","FMN","HEM","GOL","PEG","EDO","SO4","PO4"}
 
 
-# ══════════════════════════════════════════════════════════════════════════════
-#  STEP 1 — RECEPTOR PREPARATION
-# ══════════════════════════════════════════════════════════════════════════════
-card_class = "step-card done" if st.session_state.receptor_done else "step-card"
-st.markdown(f'<div class="{card_class}">', unsafe_allow_html=True)
-st.markdown('<div class="step-title">Step 1 of 4</div>', unsafe_allow_html=True)
-st.markdown('<div class="step-heading">📦 Receptor Preparation</div>', unsafe_allow_html=True)
-
-col_r1, col_r2 = st.columns([1.2, 1])
-
-with col_r1:
-    source_mode = st.radio("PDB source", ["Download from RCSB", "Upload PDB file"], horizontal=True, key="src_mode")
-    if source_mode == "Download from RCSB":
-        pdb_id_input = st.text_input("PDB ID (4 characters)", value="1M17", max_chars=4, key="pdb_id")
-        uploaded_pdb = None
-    else:
-        uploaded_pdb = st.file_uploader("Upload .pdb file", type=["pdb"], key="pdb_upload")
-        pdb_id_input = None
-
-    center_mode = st.radio(
-        "Grid center",
-        ["Auto-detect co-crystal ligand", "Enter XYZ manually"],
-        horizontal=True, key="center_mode",
-    )
-    if center_mode == "Enter XYZ manually":
-        m1, m2, m3 = st.columns(3)
-        mx = m1.number_input("X", value=0.0, key="mx")
-        my = m2.number_input("Y", value=0.0, key="my")
-        mz = m3.number_input("Z", value=0.0, key="mz")
-
-with col_r2:
-    st.markdown("**Search box size (Å)**")
-    sx = st.slider("X size", 10, 40, 16, 2, key="sx")
-    sy = st.slider("Y size", 10, 40, 16, 2, key="sy")
-    sz = st.slider("Z size", 10, 40, 16, 2, key="sz")
-    st.markdown(f"Box volume: **{sx * sy * sz} Å³**")
-
-run_receptor_btn = st.button("▶ Prepare Receptor", key="btn_receptor", type="primary")
-
-if run_receptor_btn:
+# ──────────────────────────────────────────────────────────────────────────────
+#  _receptor_section(pfx, wdir, step_label)
+#  Shared UI function for receptor preparation.
+#  pfx=""   → basic tab  (widget/state keys like "src_mode", "receptor_done" …)
+#  pfx="b_" → batch tab  (widget/state keys like "b_src_mode", "b_receptor_done" …)
+# ──────────────────────────────────────────────────────────────────────────────
+def _receptor_section(pfx: str, wdir: Path, step_label: str = "Step 1"):
     import py3Dmol
-    from prody import parsePDB, calcCenter, writePDB
+    done     = st.session_state.get(pfx + "receptor_done", False)
+    card_cls = "step-card done" if done else "step-card"
 
-    EXCLUDE_IONS = set("HOH,WAT,DOD,SOL,NA,CL,K,CA,MG,ZN,MN,FE,CU,CO,NI,CD,HG".split(","))
-    GLYCANS = {"NAG","BMA","MAN","FUC","GAL","GLC","SIA","NGA","FUL","GLA","BGC"}
-    COFACTORS = {"ATP","ADP","AMP","GTP","GDP","FAD","FMN","HEM","GOL","PEG","EDO","SO4","PO4"}
+    st.markdown(f'<div class="{card_cls}">', unsafe_allow_html=True)
+    st.markdown(f'<div class="step-title">{step_label}</div>', unsafe_allow_html=True)
+    st.markdown('<div class="step-heading">📦 Receptor Preparation</div>', unsafe_allow_html=True)
 
-    log_lines = []
+    col_r1, col_r2 = st.columns([1.2, 1])
+    with col_r1:
+        source_mode = st.radio("PDB source",
+            ["Download from RCSB", "Upload PDB file"],
+            horizontal=True, key=pfx+"src_mode")
+        if source_mode == "Download from RCSB":
+            pdb_id_input = st.text_input("PDB ID", value="1M17", max_chars=4, key=pfx+"pdb_id")
+            uploaded_pdb = None
+        else:
+            uploaded_pdb = st.file_uploader("Upload .pdb file", type=["pdb"], key=pfx+"pdb_upload")
+            pdb_id_input = None
 
-    with st.spinner("Preparing receptor… this may take 1–2 minutes"):
+        center_mode = st.radio("Grid center",
+            ["Auto-detect co-crystal ligand", "Enter XYZ manually"],
+            horizontal=True, key=pfx+"center_mode")
+        if center_mode == "Enter XYZ manually":
+            m1, m2, m3 = st.columns(3)
+            mx = m1.number_input("X", value=0.0, key=pfx+"mx")
+            my = m2.number_input("Y", value=0.0, key=pfx+"my")
+            mz = m3.number_input("Z", value=0.0, key=pfx+"mz")
+
+    with col_r2:
+        st.markdown("**Search box size (Å)**")
+        sx = st.slider("X size", 10, 40, 16, 2, key=pfx+"sx")
+        sy = st.slider("Y size", 10, 40, 16, 2, key=pfx+"sy")
+        sz = st.slider("Z size", 10, 40, 16, 2, key=pfx+"sz")
+        st.markdown(f"Box volume: **{sx*sy*sz} Å³**")
+
+    run_btn = st.button("▶ Prepare Receptor", key=pfx+"btn_receptor", type="primary")
+
+    if run_btn:
+        from prody import parsePDB, calcCenter, writePDB
+        log = []
         try:
-            # ── 1. Load PDB ────────────────────────────────────────────────
-            raw_pdb_path = str(WORKDIR / "raw.pdb")
+            raw_path = str(wdir / "raw.pdb")
             if source_mode == "Download from RCSB":
                 token = pdb_id_input.strip().upper()
-                rc, out = run_cmd(["curl", "-sf",
-                    f"https://files.rcsb.org/download/{token}.pdb", "-o", raw_pdb_path])
-                log_lines.append(f"⬇ Downloaded {token}: exit {rc}")
-                if rc != 0 or not os.path.exists(raw_pdb_path) or os.path.getsize(raw_pdb_path) < 200:
+                rc, _ = run_cmd(["curl", "-sf",
+                    f"https://files.rcsb.org/download/{token}.pdb", "-o", raw_path])
+                if rc != 0 or not os.path.exists(raw_path) or os.path.getsize(raw_path) < 200:
                     raise ValueError(f"Download failed for {token}")
-                st.session_state.pdb_token = token
+                log.append(f"⬇ Downloaded {token}")
+                st.session_state[pfx+"pdb_token"] = token
             else:
                 if uploaded_pdb is None:
-                    st.error("Please upload a PDB file first.")
-                    st.stop()
-                with open(raw_pdb_path, "wb") as f:
-                    f.write(uploaded_pdb.read())
-                st.session_state.pdb_token = Path(uploaded_pdb.name).stem
-                log_lines.append(f"📂 Loaded uploaded file: {uploaded_pdb.name}")
+                    st.error("Please upload a PDB file."); st.stop()
+                with open(raw_path, "wb") as f: f.write(uploaded_pdb.read())
+                st.session_state[pfx+"pdb_token"] = Path(uploaded_pdb.name).stem
+                log.append(f"📂 Loaded: {uploaded_pdb.name}")
 
-            atoms = parsePDB(raw_pdb_path)
-            log_lines.append(f"✓ Parsed PDB: {atoms.numAtoms()} atoms")
+            atoms = parsePDB(raw_path)
+            log.append(f"✓ Parsed: {atoms.numAtoms()} atoms")
 
-            # ── 2. Co-crystal ligand detection ─────────────────────────────
-            het = atoms.select("hetero and not water")
-            ligand_pdb_path = None
-            cx, cy, cz = 0.0, 0.0, 0.0
-
-            if het is not None and center_mode == "Auto-detect co-crystal ligand":
-                exclude_all = EXCLUDE_IONS | GLYCANS | COFACTORS
-                candidates = []
-                for res in het.getHierView().iterResidues():
-                    rn = (res.getResname() or "").strip()
-                    if rn not in exclude_all:
-                        candidates.append(res)
-
-                if candidates:
-                    # pick largest candidate (most atoms), prefer chain A
-                    candidates.sort(key=lambda r: (-r.numAtoms(), r.getChid() != "A"))
-                    chosen = candidates[0]
-                    lig_sel = atoms.select(
-                        f"resname {chosen.getResname()} and resid {chosen.getResnum()} "
-                        f"and chain {chosen.getChid()}"
-                    )
-                    ligand_pdb_path = str(WORKDIR / "LIG.pdb")
-                    writePDB(ligand_pdb_path, lig_sel)
-                    cx, cy, cz = (float(v) for v in calcCenter(lig_sel))
-                    log_lines.append(f"✓ Auto-selected ligand: {chosen.getResname()} "
-                                     f"chain {chosen.getChid()} resid {chosen.getResnum()} "
-                                     f"({lig_sel.numAtoms()} atoms)")
-                    log_lines.append(f"📍 Grid center: ({cx:.3f}, {cy:.3f}, {cz:.3f})")
-                    ligand_sel_str = (f"resname {chosen.getResname()} and resid {chosen.getResnum()} "
-                                      f"and chain {chosen.getChid()}")
-                else:
-                    log_lines.append("⚠ No co-crystal ligand found after filtering")
-                    ligand_sel_str = None
+            # Co-crystal ligand detection
+            ligand_pdb_path = None; cx = cy = cz = 0.0; ligand_sel_str = None
+            if center_mode == "Auto-detect co-crystal ligand":
+                het = atoms.select("hetero and not water")
+                if het is not None:
+                    excl = _EXCLUDE_IONS | _GLYCAN_NAMES | _COFACTOR_NAMES
+                    cands = [r for r in het.getHierView().iterResidues()
+                             if (r.getResname() or "").strip() not in excl]
+                    if cands:
+                        cands.sort(key=lambda r: (-r.numAtoms(), r.getChid() != "A"))
+                        chosen = cands[0]
+                        rn, ch, ri = chosen.getResname(), chosen.getChid(), chosen.getResnum()
+                        ligand_sel_str  = f"resname {rn} and resid {ri} and chain {ch}"
+                        lig_sel         = atoms.select(ligand_sel_str)
+                        ligand_pdb_path = str(wdir / "LIG.pdb")
+                        writePDB(ligand_pdb_path, lig_sel)
+                        cx, cy, cz = (float(v) for v in calcCenter(lig_sel))
+                        log.append(f"✓ Ligand: {rn} chain {ch} resid {ri} ({lig_sel.numAtoms()} atoms)")
+                        log.append(f"📍 Center: ({cx:.3f}, {cy:.3f}, {cz:.3f})")
+                    else:
+                        log.append("⚠ No co-crystal ligand found after filtering")
             else:
-                ligand_sel_str = None
-                if center_mode == "Enter XYZ manually":
-                    cx, cy, cz = mx, my, mz
-                    log_lines.append(f"🛠 Manual grid center: ({cx:.3f}, {cy:.3f}, {cz:.3f})")
+                cx, cy, cz = mx, my, mz
+                log.append(f"🛠 Manual center: ({cx:.3f}, {cy:.3f}, {cz:.3f})")
 
-            # ── 3. Receptor atom selection ──────────────────────────────────
-            if ligand_sel_str:
-                rec_sel_str = f"not ({ligand_sel_str}) and not water"
-            else:
-                rec_sel_str = "not water"
-            rec_atoms = atoms.select(rec_sel_str)
-            receptor_pdb_path = str(WORKDIR / "receptor_atoms.pdb")
-            writePDB(receptor_pdb_path, rec_atoms)
-            log_lines.append(f"✓ Receptor: {rec_atoms.numAtoms()} atoms written")
+            # Receptor atom selection
+            rec_sel = atoms.select(
+                f"not ({ligand_sel_str}) and not water" if ligand_sel_str else "not water")
+            rec_raw = str(wdir / "receptor_atoms.pdb")
+            writePDB(rec_raw, rec_sel)
+            log.append(f"✓ Receptor: {rec_sel.numAtoms()} atoms")
 
-            # ── 4. OpenBabel: add H → PDBQT ────────────────────────────────
-            rec_fh = str(WORKDIR / "rec.pdb")
-            rec_pdbqt = str(WORKDIR / "rec.pdbqt")
-            rc1, o1 = run_cmd(f'obabel "{receptor_pdb_path}" -O "{rec_fh}" -h 2>/dev/null')
-            log_lines.append(f"obabel -h exit {rc1}")
-            if rc1 != 0 or os.path.getsize(rec_fh) < 100:
-                raise ValueError("OpenBabel H-addition failed")
+            # OpenBabel: add H → PDBQT
+            rec_fh    = str(wdir / "rec.pdb")
+            rec_pdbqt = str(wdir / "rec.pdbqt")
+            run_cmd(f'obabel "{rec_raw}" -O "{rec_fh}" -h 2>/dev/null')
+            if os.path.getsize(rec_fh) < 100: raise ValueError("OpenBabel H-addition failed")
+            run_cmd(f'obabel "{rec_fh}" -O "{rec_pdbqt}" -xr --partialcharge gasteiger 2>/dev/null')
+            if os.path.getsize(rec_pdbqt) < 100: raise ValueError("PDBQT conversion failed")
+            log.append("✓ Receptor PDBQT written")
 
-            rc2, o2 = run_cmd(
-                f'obabel "{rec_fh}" -O "{rec_pdbqt}" -xr --partialcharge gasteiger 2>/dev/null'
-            )
-            log_lines.append(f"obabel PDBQT exit {rc2}")
-            if rc2 != 0 or os.path.getsize(rec_pdbqt) < 100:
-                raise ValueError("OpenBabel PDBQT conversion failed")
-            log_lines.append(f"✓ Receptor PDBQT: {rec_pdbqt}")
-
-            # ── 5. Box PDB + Vina config ────────────────────────────────────
-            box_pdb_path = str(WORKDIR / "rec.box.pdb")
-            config_path  = str(WORKDIR / "rec.box.txt")
-
-            hx, hy, hz = sx / 2, sy / 2, sz / 2
-            corners = [
-                (cx-hx, cy-hy, cz-hz), (cx+hx, cy-hy, cz-hz),
-                (cx-hx, cy+hy, cz-hz), (cx+hx, cy+hy, cz-hz),
-                (cx-hx, cy-hy, cz+hz), (cx+hx, cy-hy, cz+hz),
-                (cx-hx, cy+hy, cz+hz), (cx+hx, cy+hy, cz+hz),
-            ]
-            with open(box_pdb_path, "w") as f:
-                for i, (x, y, z) in enumerate(corners, 1):
+            # Box PDB + Vina config
+            box_pdb  = str(wdir / "rec.box.pdb")
+            cfg_path = str(wdir / "rec.box.txt")
+            hx, hy, hz = sx/2, sy/2, sz/2
+            corners = [(cx+dx, cy+dy, cz+dz)
+                       for dx in (-hx,hx) for dy in (-hy,hy) for dz in (-hz,hz)]
+            with open(box_pdb, "w") as f:
+                for i, (x,y,z) in enumerate(corners, 1):
                     f.write(f"HETATM{i:5d}  C   BOX A   1    {x:8.3f}{y:8.3f}{z:8.3f}  1.00  0.00           C\n")
                 f.write("CONECT    1    2    3    5\nCONECT    2    1    4    6\n"
                         "CONECT    3    1    4    7\nCONECT    4    2    3    8\n"
                         "CONECT    5    1    6    7\nCONECT    6    2    5    8\n"
                         "CONECT    7    3    5    8\nCONECT    8    4    6    7\n")
-
-            with open(config_path, "w") as f:
+            with open(cfg_path, "w") as f:
                 f.write(f"center_x = {cx:.4f}\ncenter_y = {cy:.4f}\ncenter_z = {cz:.4f}\n"
                         f"size_x = {sx}\nsize_y = {sy}\nsize_z = {sz}\n")
-            log_lines.append(f"✓ Config written: {config_path}")
+            log.append("✓ Box + config written")
 
-            # ── Save to session ────────────────────────────────────────────
-            st.session_state.update(dict(
-                raw_pdb=raw_pdb_path, receptor_fh=rec_fh, receptor_pdbqt=rec_pdbqt,
-                box_pdb=box_pdb_path, config_txt=config_path,
-                cx=cx, cy=cy, cz=cz,
-                ligand_pdb_path=ligand_pdb_path,
-                receptor_done=True, receptor_log="\n".join(log_lines),
-            ))
-
+            st.session_state.update({
+                pfx+"raw_pdb": raw_path,    pfx+"receptor_fh": rec_fh,
+                pfx+"receptor_pdbqt": rec_pdbqt, pfx+"box_pdb": box_pdb,
+                pfx+"config_txt": cfg_path, pfx+"cx": cx, pfx+"cy": cy, pfx+"cz": cz,
+                pfx+"ligand_pdb_path": ligand_pdb_path,
+                pfx+"receptor_done": True,  pfx+"receptor_log": "\n".join(log),
+            })
         except Exception as e:
             st.error(f"❌ Receptor preparation failed: {e}")
-            st.session_state.receptor_done = False
-            st.session_state.receptor_log = "\n".join(log_lines) + f"\n\nERROR: {e}"
+            st.session_state[pfx+"receptor_done"] = False
+            st.session_state[pfx+"receptor_log"]  = "\n".join(log) + f"\nERROR: {e}"
 
-# ── Receptor Results ───────────────────────────────────────────────────────────
-if st.session_state.receptor_done:
-    import py3Dmol
-    st.markdown(
-        f"{_pill('Receptor ready ✓', 'success')} "
-        f"{_pill(st.session_state.pdb_token)} "
-        f"{_pill(f'Center: ({st.session_state.cx:.2f}, {st.session_state.cy:.2f}, {st.session_state.cz:.2f})')} "
-        f"{_pill(f'Box: {st.session_state.sx}×{st.session_state.sy}×{st.session_state.sz} Å')}",
-        unsafe_allow_html=True,
-    )
-    with st.expander("📋 Preparation log", expanded=False):
-        st.markdown(f'<div class="log-box">{st.session_state.receptor_log}</div>', unsafe_allow_html=True)
-
-    # 3D viewer
-    with st.expander("🔭 3D: Receptor + Docking Box", expanded=True):
-        view = py3Dmol.view(width="100%", height=480)
-        view.setBackgroundColor("#0d1117")
-        idx = 0
-        for path, style in [
-            (st.session_state.receptor_fh, {"cartoon": {"color": "spectrum", "opacity": 0.65}}),
-            (st.session_state.box_pdb,     {"line": {"color": "cyan"}}),
-        ]:
-            if path and os.path.exists(path):
-                view.addModel(open(path).read(), "pdb")
-                view.setStyle({"model": idx}, style)
-                idx += 1
-        if st.session_state.ligand_pdb_path and os.path.exists(st.session_state.ligand_pdb_path):
-            view.addModel(open(st.session_state.ligand_pdb_path).read(), "pdb")
-            view.setStyle({"model": idx}, {"stick": {"colorscheme": "magentaCarbon", "radius": 0.25}})
-        # zoomTo() with no args fits ALL models — box is never clipped on narrow screens
-        view.zoomTo()
-        view.zoom(0.85)
-        show3d(view, height=480)
-
-st.markdown('</div>', unsafe_allow_html=True)
-st.markdown('<hr class="step-divider">', unsafe_allow_html=True)
-
-
-# ══════════════════════════════════════════════════════════════════════════════
-#  STEP 2 — LIGAND PREPARATION
-# ══════════════════════════════════════════════════════════════════════════════
-card_class = "step-card done" if st.session_state.ligand_done else "step-card"
-st.markdown(f'<div class="{card_class}">', unsafe_allow_html=True)
-st.markdown('<div class="step-title">Step 2 of 4</div>', unsafe_allow_html=True)
-st.markdown('<div class="step-heading">⚗️ Ligand Preparation</div>', unsafe_allow_html=True)
-
-col_l1, col_l2 = st.columns([1.5, 1])
-with col_l1:
-    smiles_input = st.text_input(
-        "SMILES string",
-        value="COCCOC1=C(C=C2C(=C1)C(=NC=N2)NC3=CC=CC(=C3)C#C)OCCOC",
-        help="Enter the canonical SMILES for your ligand",
-        key="smiles_in",
-    )
-    ligand_name_input = st.text_input("Output name (no extension)", value="ELR", key="lig_name_in")
-    ph_input = st.number_input("Target pH for protonation", min_value=0.0, max_value=14.0, value=7.4, step=0.1, key="ph_in")
-
-with col_l2:
-    st.markdown("**pKa prediction**")
-    if PKA_MODEL is not None and smiles_input:
-        try:
-            from pkapredict import smiles_to_rdkit_descriptors, predict_pKa
-            desc = smiles_to_rdkit_descriptors([smiles_input])
-            pka_live = float(predict_pKa(PKA_MODEL, desc)[0])
-            charged = "deprotonated (−1)" if pka_live < ph_input else "neutral (0)"
-            st.markdown(
-                f'<div style="background:#1f6feb15;border:1px solid #1f6feb;border-radius:8px;padding:16px;">'
-                f'<div style="font-family:\'IBM Plex Mono\',monospace;font-size:1.8rem;color:#58a6ff">'
-                f'pKa = {pka_live:.2f}</div>'
-                f'<div style="color:#8b949e;font-size:0.85rem">at pH {ph_input:.1f}: likely <b style="color:#79c0ff">{charged}</b></div>'
-                f'</div>',
-                unsafe_allow_html=True,
-            )
-        except Exception:
-            st.info("pKa model unavailable for this SMILES.")
-    else:
-        st.info("Enter a SMILES to see live pKa estimate.")
-
-run_ligand_btn = st.button("▶ Prepare Ligand", key="btn_ligand", type="primary",
-                           disabled=not st.session_state.receptor_done)
-if not st.session_state.receptor_done:
-    st.caption("⚠ Complete Step 1 first.")
-
-if run_ligand_btn:
-    from rdkit import Chem
-    from rdkit.Chem import AllChem, Draw
-    import io as _io
-
-    log_lines = []
-
-    # rdkit.six compatibility patch for Meeko
-    try:
-        from rdkit import six as _rdkit_six
-    except ImportError:
-        from io import StringIO as _SIO
-        from types import ModuleType as _MT
-        import rdkit as _rdkit
-        _m = _MT("six")
-        _m.StringIO = _SIO
-        _m.PY3 = True
-        _rdkit.six = _m
-        sys.modules["rdkit.six"] = _m
-        log_lines.append("✓ Applied rdkit.six compatibility patch")
-
-    from meeko import MoleculePreparation
-
-    lig_name = ligand_name_input.strip() or "LIG"
-    lig_pdbqt = str(WORKDIR / f"{lig_name}.pdbqt")
-    lig_sdf   = str(WORKDIR / f"{lig_name}_scrubbed.sdf")
-
-    with st.spinner("Preparing ligand…"):
-        try:
-            # Protonation
-            prot_smiles = smiles_input.strip()
-            try:
-                from dimorphite_dl import protonate_smiles
-                variants = protonate_smiles(prot_smiles, ph_min=ph_input, ph_max=ph_input, max_variants=1)
-                if variants:
-                    prot_smiles = variants[0]
-                    log_lines.append(f"✓ Dimorphite-DL protonation at pH {ph_input}")
-                else:
-                    log_lines.append("⚠ Dimorphite-DL returned no variants; using input SMILES")
-            except Exception as e:
-                log_lines.append(f"⚠ Dimorphite-DL unavailable ({e}); using input SMILES")
-
-            mol = Chem.MolFromSmiles(prot_smiles)
-            if mol is None:
-                raise ValueError("RDKit could not parse SMILES")
-            formal_charge = Chem.GetFormalCharge(mol)
-            log_lines.append(f"✓ Formal charge at pH {ph_input}: {formal_charge:+d}")
-
-            # 3D conformer
-            mol = Chem.AddHs(mol)
-            try:
-                params = AllChem.ETKDGv3()
-            except AttributeError:
-                params = AllChem.ETKDG()
-            params.randomSeed = 42
-            res = AllChem.EmbedMolecule(mol, params)
-            if res == -1:
-                res = AllChem.EmbedMolecule(mol, useRandomCoords=True, randomSeed=42)
-            if res == -1:
-                raise ValueError("3D embedding failed")
-
-            if AllChem.MMFFHasAllMoleculeParams(mol):
-                AllChem.MMFFOptimizeMolecule(mol, maxIters=500)
-                log_lines.append("✓ MMFF geometry optimized")
-            else:
-                AllChem.UFFOptimizeMolecule(mol, maxIters=500)
-                log_lines.append("✓ UFF geometry optimized (MMFF unavailable)")
-
-            with Chem.SDWriter(lig_sdf) as w:
-                w.write(mol)
-            log_lines.append(f"✓ SDF written: {lig_sdf}")
-
-            # Meeko PDBQT
-            prep = MoleculePreparation()
-            prep.prepare(mol)
-            pdbqt_str = prep.write_pdbqt_string()
-            with open(lig_pdbqt, "w") as f:
-                f.write(pdbqt_str)
-            log_lines.append(f"✓ PDBQT written: {lig_pdbqt}")
-
-            st.session_state.update(dict(
-                ligand_pdbqt=lig_pdbqt, ligand_sdf=lig_sdf,
-                ligand_name=lig_name, prot_smiles=prot_smiles,
-                ligand_done=True, ligand_log="\n".join(log_lines),
-            ))
-
-        except Exception as e:
-            st.error(f"❌ Ligand preparation failed: {e}")
-            st.session_state.ligand_done = False
-            st.session_state.ligand_log = "\n".join(log_lines) + f"\n\nERROR: {e}"
-
-# ── Ligand Results ─────────────────────────────────────────────────────────────
-if st.session_state.ligand_done:
-    from rdkit import Chem
-    from rdkit.Chem import AllChem, Draw
-    import py3Dmol
-
-    st.markdown(
-        f"{_pill('Ligand ready ✓', 'success')} "
-        f"{_pill(st.session_state.ligand_name)} "
-        f"{_pill(f'PDBQT: {Path(st.session_state.ligand_pdbqt).name}')}",
-        unsafe_allow_html=True,
-    )
-    with st.expander("📋 Preparation log", expanded=False):
-        st.markdown(f'<div class="log-box">{st.session_state.ligand_log}</div>', unsafe_allow_html=True)
-
-    col_2d, col_3d = st.columns(2)
-    with col_2d:
-        st.markdown("**2D Structure**")
-        try:
-            mol2d = Chem.MolFromSmiles(st.session_state.prot_smiles)
-            if mol2d:
-                AllChem.Compute2DCoords(mol2d)
-                img = Draw.MolToImage(mol2d, size=(320, 260))
-                buf = io.BytesIO()
-                img.save(buf, format="PNG")
-                st.image(buf.getvalue(), use_container_width=False, width=320)
-        except Exception as e:
-            st.info(f"2D rendering unavailable: {e}")
-
-    with col_3d:
-        st.markdown("**3D Conformer**")
-        try:
-            sdf_content = open(st.session_state.ligand_sdf).read()
-            v = py3Dmol.view(width="100%", height=280)
-            v.setBackgroundColor("#0d1117")
-            v.addModel(sdf_content, "sdf")
-            v.setStyle({}, {"stick": {"colorscheme": "yellowCarbon", "radius": 0.2}})
-            v.zoomTo()
-            show3d(v, height=280)
-        except Exception as e:
-            st.info(f"3D viewer unavailable: {e}")
-
-st.markdown('</div>', unsafe_allow_html=True)
-st.markdown('<hr class="step-divider">', unsafe_allow_html=True)
-
-
-# ══════════════════════════════════════════════════════════════════════════════
-#  STEP 3 — DOCKING
-# ══════════════════════════════════════════════════════════════════════════════
-card_class = "step-card done" if st.session_state.docking_done else "step-card"
-st.markdown(f'<div class="{card_class}">', unsafe_allow_html=True)
-st.markdown('<div class="step-title">Step 3 of 4</div>', unsafe_allow_html=True)
-st.markdown('<div class="step-heading">🚀 Docking with AutoDock Vina</div>', unsafe_allow_html=True)
-
-col_d1, col_d2 = st.columns([1.5, 1])
-with col_d1:
-    exhaustiveness = st.slider(
-        "Exhaustiveness", min_value=4, max_value=64, value=16, step=2, key="exh_slider",
-        help="Higher = more thorough but slower. 8 = fast, 16 = balanced, 32+ = thorough.",
-    )
-    num_modes = st.slider("Number of poses", 5, 20, 10, 1, key="n_modes")
-    energy_range = st.slider("Energy range (kcal/mol)", 1, 5, 3, 1, key="e_range")
-
-with col_d2:
-    est_min = max(1, exhaustiveness // 8)
-    st.markdown(
-        f'<div style="background:#21262d;border:1px solid #30363d;border-radius:8px;padding:16px;">'
-        f'<div style="color:#8b949e;font-size:0.8rem">ESTIMATED TIME</div>'
-        f'<div style="font-family:\'IBM Plex Mono\',monospace;font-size:2rem;color:#d29922">~{est_min}–{est_min*3} min</div>'
-        f'<div style="color:#8b949e;font-size:0.8rem">exhaustiveness = {exhaustiveness}</div>'
-        f'</div>',
-        unsafe_allow_html=True,
-    )
-
-run_dock_btn = st.button("▶ Run Docking", key="btn_dock", type="primary",
-                         disabled=not st.session_state.ligand_done)
-if not st.session_state.ligand_done:
-    st.caption("⚠ Complete Steps 1 & 2 first.")
-
-if run_dock_btn:
-    dock_base = st.session_state.ligand_name
-    out_pdbqt = str(WORKDIR / f"{dock_base}_out.pdbqt")
-    out_sdf   = str(WORKDIR / f"{dock_base}_out.sdf")
-
-    with st.spinner(f"Running Vina (exhaustiveness={exhaustiveness})… please wait ⏳"):
-        cmd = (
-            f'"{VINA_PATH}" '
-            f'--receptor "{st.session_state.receptor_pdbqt}" '
-            f'--ligand "{st.session_state.ligand_pdbqt}" '
-            f'--config "{st.session_state.config_txt}" '
-            f'--exhaustiveness {exhaustiveness} '
-            f'--num_modes {num_modes} '
-            f'--energy_range {energy_range} '
-            f'--out "{out_pdbqt}"'
-        )
-        rc, vina_log = run_cmd(cmd, cwd=str(WORKDIR))
-
-        if rc != 0 or not os.path.exists(out_pdbqt):
-            st.error(f"❌ Vina failed (exit {rc}):\n{vina_log}")
-            st.session_state.docking_done = False
-        else:
-            # Convert to SDF via obabel
-            rc2, _ = run_cmd(f'obabel "{out_pdbqt}" -O "{out_sdf}" 2>/dev/null')
-            st.session_state.update(dict(
-                output_pdbqt=out_pdbqt, output_sdf=out_sdf, dock_base=dock_base,
-                docking_done=True, docking_log=vina_log,
-            ))
-
-            # Parse scores
-            data = []
-            cur_model = None
-            for line in open(out_pdbqt):
-                line = line.strip()
-                if line.startswith("MODEL"):
-                    try: cur_model = int(line.split()[1])
-                    except: pass
-                elif line.startswith("REMARK VINA RESULT:"):
-                    parts = line.split()
-                    try:
-                        data.append({
-                            "Pose": cur_model,
-                            "Affinity (kcal/mol)": float(parts[3]),
-                            "RMSD lb": float(parts[4]),
-                            "RMSD ub": float(parts[5]),
-                        })
-                    except: pass
-            if data:
-                df = pd.DataFrame(data).sort_values("Affinity (kcal/mol)").reset_index(drop=True)
-                st.session_state.score_df = df
-
-            # Load pose molecules
-            from rdkit import Chem
-            if os.path.exists(out_sdf):
-                sup = Chem.SDMolSupplier(out_sdf, sanitize=False)
-                st.session_state.pose_mols = [m for m in sup if m is not None]
-
-# ── Docking Results Preview ────────────────────────────────────────────────────
-if st.session_state.docking_done:
-    st.markdown(f"{_pill('Docking complete ✓', 'success')}", unsafe_allow_html=True)
-    with st.expander("📋 Vina output log", expanded=False):
-        st.markdown(f'<div class="log-box">{st.session_state.docking_log}</div>', unsafe_allow_html=True)
-
-    if st.session_state.score_df is not None and len(st.session_state.score_df) > 0:
-        best = st.session_state.score_df["Affinity (kcal/mol)"].min()
-        binding_class = (
-            "Very strong" if best < -11 else
-            "Strong" if best < -9 else
-            "Moderate" if best < -7 else "Weak"
-        )
+    # Results display
+    if st.session_state.get(pfx+"receptor_done"):
+        token = st.session_state.get(pfx+"pdb_token", "")
+        cx_v  = st.session_state.get(pfx+"cx", 0)
+        cy_v  = st.session_state.get(pfx+"cy", 0)
+        cz_v  = st.session_state.get(pfx+"cz", 0)
+        _sx   = st.session_state.get(pfx+"sx", 16)
+        _sy   = st.session_state.get(pfx+"sy", 16)
+        _sz   = st.session_state.get(pfx+"sz", 16)
         st.markdown(
-            f'<div class="score-best">{best:.2f} '
-            f'<span class="score-unit">kcal/mol</span></div>'
-            f'<div style="color:#8b949e;font-size:0.9rem;margin-bottom:12px">'
-            f'Best pose affinity — {binding_class} predicted binding</div>',
-            unsafe_allow_html=True,
-        )
+            f"{_pill('Receptor ready ✓','success')} {_pill(token)} "
+            f"{_pill(f'Center: ({cx_v:.2f}, {cy_v:.2f}, {cz_v:.2f})')} "
+            f"{_pill(f'Box: {_sx}×{_sy}×{_sz} Å')}",
+            unsafe_allow_html=True)
+        with st.expander("📋 Preparation log", expanded=False):
+            st.markdown(
+                f'<div class="log-box">{st.session_state.get(pfx+"receptor_log","")}</div>',
+                unsafe_allow_html=True)
+        with st.expander("🔭 3D: Receptor + Docking Box", expanded=True):
+            v = py3Dmol.view(width="100%", height=480)
+            v.setBackgroundColor("#0d1117")
+            mi = 0
+            for path, style in [
+                (st.session_state.get(pfx+"receptor_fh"),
+                 {"cartoon":{"color":"spectrum","opacity":0.65}}),
+                (st.session_state.get(pfx+"box_pdb"),
+                 {"line":{"color":"cyan"}}),
+            ]:
+                if path and os.path.exists(path):
+                    v.addModel(open(path).read(), "pdb")
+                    v.setStyle({"model":mi}, style); mi += 1
+            lig_p = st.session_state.get(pfx+"ligand_pdb_path")
+            if lig_p and os.path.exists(lig_p):
+                v.addModel(open(lig_p).read(), "pdb")
+                v.setStyle({"model":mi}, {"stick":{"colorscheme":"magentaCarbon","radius":0.25}})
+            v.zoomTo(); v.zoom(0.85)
+            show3d(v, height=480)
 
-st.markdown('</div>', unsafe_allow_html=True)
+    st.markdown('</div>', unsafe_allow_html=True)
+    st.markdown('<hr class="step-divider">', unsafe_allow_html=True)
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+#  HEADER
+# ──────────────────────────────────────────────────────────────────────────────
+st.markdown("# 🧬 AutoDock Vina 1.2.7")
+st.markdown(
+    "Molecular docking powered by **AutoDock Vina**, **RDKit**, **Meeko**, and **OpenBabel**. "
+    "Choose **Basic** for a single ligand, **Batch** for multiple ligands with Vina or VinaXB."
+)
+if VINA_PATH is None:
+    st.error(f"❌ Vina binary unavailable: {_vina_err}"); st.stop()
+
+_hdr = f"{_pill('Vina 1.2.7 ✓','success')}"
+_hdr += f" {_pill('VinaXB ✓','success')}" if VINAXB_PATH else f" {_pill('VinaXB unavailable','warn')}"
+st.markdown(_hdr, unsafe_allow_html=True)
 st.markdown('<hr class="step-divider">', unsafe_allow_html=True)
 
 
-# ══════════════════════════════════════════════════════════════════════════════
-#  STEP 4 — RESULTS
-# ══════════════════════════════════════════════════════════════════════════════
-card_class = "step-card done" if st.session_state.docking_done else "step-card"
-st.markdown(f'<div class="{card_class}">', unsafe_allow_html=True)
-st.markdown('<div class="step-title">Step 4 of 4</div>', unsafe_allow_html=True)
-st.markdown('<div class="step-heading">📊 Results & Visualization</div>', unsafe_allow_html=True)
+# ──────────────────────────────────────────────────────────────────────────────
+#  TABS
+# ──────────────────────────────────────────────────────────────────────────────
+tab_basic, tab_batch = st.tabs([
+    "🧪  Basic Docking — single ligand",
+    "🔬  Batch Docking — multiple ligands",
+])
 
-if not st.session_state.docking_done:
-    st.info("Complete Step 3 (docking) to see results here.")
-else:
-    import py3Dmol
-    df = st.session_state.score_df
-    mols = st.session_state.pose_mols or []
-    from rdkit import Chem
 
-    # ── Score table + bar chart ────────────────────────────────────────────
-    col_tbl, col_chart = st.columns([1, 1.4])
-    with col_tbl:
-        st.markdown("**Vina Score Table**")
-        if df is not None:
-            st.dataframe(
-                df.style.background_gradient(cmap="RdYlGn", subset=["Affinity (kcal/mol)"], gmap=-df["Affinity (kcal/mol)"]),
-                use_container_width=True, hide_index=True,
-            )
+# ╔════════════════════════════════════════════════════════════════════════════╗
+#  TAB 1 — BASIC DOCKING
+# ╚════════════════════════════════════════════════════════════════════════════╝
+with tab_basic:
 
-    with col_chart:
-        st.markdown("**Affinity by Pose**")
-        if df is not None:
-            fig, ax = plt.subplots(figsize=(6, 3.5))
-            fig.patch.set_facecolor("#161b22")
-            ax.set_facecolor("#0d1117")
+    # Step 1: Receptor (shared function, prefix="")
+    _receptor_section(pfx="", wdir=WORKDIR, step_label="Step 1 of 4")
 
-            colors = ["#3fb950" if v == df["Affinity (kcal/mol)"].min() else "#58a6ff"
-                      for v in df["Affinity (kcal/mol)"]]
-            bars = ax.bar(df["Pose"].astype(str), df["Affinity (kcal/mol)"], color=colors,
-                          edgecolor="#30363d", linewidth=0.6)
-            ax.invert_yaxis()
-            ax.set_xlabel("Pose", color="#8b949e", fontsize=9)
-            ax.set_ylabel("Affinity (kcal/mol)", color="#8b949e", fontsize=9)
-            ax.tick_params(colors="#8b949e", labelsize=8)
-            for spine in ax.spines.values():
-                spine.set_edgecolor("#30363d")
-            ax.axhline(y=0, color="#30363d", linewidth=0.5)
-            fig.tight_layout()
-            st.pyplot(fig, use_container_width=True)
-            plt.close(fig)
+    # ── Step 2: Ligand ────────────────────────────────────────────────────────
+    card_cls = "step-card done" if st.session_state.ligand_done else "step-card"
+    st.markdown(f'<div class="{card_cls}">', unsafe_allow_html=True)
+    st.markdown('<div class="step-title">Step 2 of 4</div>', unsafe_allow_html=True)
+    st.markdown('<div class="step-heading">⚗️ Ligand Preparation</div>', unsafe_allow_html=True)
 
-    st.markdown("---")
+    col_l1, col_l2 = st.columns([1.5, 1])
+    with col_l1:
+        smiles_in    = st.text_input("SMILES string",
+            value="COCCOC1=C(C=C2C(=C1)C(=NC=N2)NC3=CC=CC(=C3)C#C)OCCOC", key="smiles_in")
+        lig_name_in  = st.text_input("Output name (no extension)", value="ELR", key="lig_name_in")
+        ph_in        = st.number_input("Target pH", 0.0, 14.0, 7.4, 0.1, key="ph_in")
+    with col_l2:
+        st.markdown("**pKa prediction**")
+        if PKA_MODEL and smiles_in:
+            try:
+                from pkapredict import smiles_to_rdkit_descriptors, predict_pKa
+                pka_live = float(predict_pKa(PKA_MODEL,
+                                             smiles_to_rdkit_descriptors([smiles_in]))[0])
+                charged  = "deprotonated (−1)" if pka_live < ph_in else "neutral (0)"
+                st.markdown(
+                    f'<div style="background:#1f6feb15;border:1px solid #1f6feb;'
+                    f'border-radius:8px;padding:16px;">'
+                    f'<div style="font-family:\'IBM Plex Mono\',monospace;font-size:1.8rem;'
+                    f'color:#58a6ff">pKa = {pka_live:.2f}</div>'
+                    f'<div style="color:#8b949e;font-size:0.85rem">at pH {ph_in:.1f}: '
+                    f'likely <b style="color:#79c0ff">{charged}</b></div>'
+                    f'</div>', unsafe_allow_html=True)
+            except Exception:
+                st.info("pKa unavailable for this SMILES.")
 
-    # ── Animated pose viewer ───────────────────────────────────────────────
-    st.markdown("**🎬 Animated Pose Viewer** — all poses cycling through")
-    anim_speed = st.slider("Animation interval (ms)", 500, 3000, 1500, 250, key="anim_spd")
+    run_lig_btn = st.button("▶ Prepare Ligand", key="btn_ligand", type="primary",
+                            disabled=not st.session_state.receptor_done)
+    if not st.session_state.receptor_done:
+        st.caption("⚠ Complete Step 1 first.")
 
-    if os.path.exists(st.session_state.output_sdf):
-        sdf_text = open(st.session_state.output_sdf).read()
-        v = py3Dmol.view(width="100%", height=440)
-        v.setBackgroundColor("#0d1117")
-        midx = 0
-        # Receptor
-        if st.session_state.receptor_fh and os.path.exists(st.session_state.receptor_fh):
-            v.addModel(open(st.session_state.receptor_fh).read(), "pdb")
-            v.setStyle({"model": midx}, {"cartoon": {"color": "spectrum", "opacity": 0.55},
-                                          "stick": {"radius": 0.1, "opacity": 0.2}})
-            midx += 1
-        # Reference ligand
-        if st.session_state.ligand_pdb_path and os.path.exists(st.session_state.ligand_pdb_path):
-            v.addModel(open(st.session_state.ligand_pdb_path).read(), "pdb")
-            v.setStyle({"model": midx}, {"stick": {"colorscheme": "magentaCarbon", "radius": 0.22}})
-            midx += 1
-        # Docked poses (animated)
-        v.addModelsAsFrames(sdf_text)
-        v.setStyle({"model": midx}, {"stick": {"colorscheme": "greenCarbon", "radius": 0.25}})
-        v.animate({"interval": anim_speed, "loop": "forward"})
-        v.zoomTo()  # fit all — never clips box on narrow screens
-        v.zoom(0.85)
-        v.rotate(30)
-        show3d(v, height=440)
+    if run_lig_btn:
+        _rdkit_six_patch()
+        from rdkit import Chem; from rdkit.Chem import AllChem, Draw
+        from meeko import MoleculePreparation
+        log      = []
+        lig_name = lig_name_in.strip() or "LIG"
+        lig_pdbqt = str(WORKDIR / f"{lig_name}.pdbqt")
+        lig_sdf   = str(WORKDIR / f"{lig_name}_scrubbed.sdf")
+        with st.spinner("Preparing ligand…"):
+            try:
+                prot = smiles_in.strip()
+                try:
+                    from dimorphite_dl import protonate_smiles
+                    vs = protonate_smiles(prot, ph_min=ph_in, ph_max=ph_in, max_variants=1)
+                    if vs: prot = vs[0]; log.append(f"✓ Dimorphite-DL pH {ph_in}")
+                except Exception as e: log.append(f"⚠ Dimorphite-DL: {e}")
+                mol = Chem.MolFromSmiles(prot)
+                if mol is None: raise ValueError("RDKit could not parse SMILES")
+                log.append(f"✓ Charge: {Chem.GetFormalCharge(mol):+d}")
+                mol = Chem.AddHs(mol)
+                try:    params = AllChem.ETKDGv3()
+                except: params = AllChem.ETKDG()
+                params.randomSeed = 42
+                if AllChem.EmbedMolecule(mol, params) == -1:
+                    if AllChem.EmbedMolecule(mol, useRandomCoords=True, randomSeed=42) == -1:
+                        raise ValueError("3D embedding failed")
+                if AllChem.MMFFHasAllMoleculeParams(mol): AllChem.MMFFOptimizeMolecule(mol, maxIters=500)
+                else:                                     AllChem.UFFOptimizeMolecule(mol, maxIters=500)
+                log.append("✓ Geometry optimized")
+                with Chem.SDWriter(lig_sdf) as w: w.write(mol)
+                prep = MoleculePreparation(); prep.prepare(mol)
+                with open(lig_pdbqt, "w") as f: f.write(prep.write_pdbqt_string())
+                log.append(f"✓ PDBQT: {lig_pdbqt}")
+                st.session_state.update(dict(
+                    ligand_pdbqt=lig_pdbqt, ligand_sdf=lig_sdf, ligand_name=lig_name,
+                    prot_smiles=prot, ligand_done=True, ligand_log="\n".join(log)))
+            except Exception as e:
+                st.error(f"❌ Ligand prep failed: {e}")
+                st.session_state.ligand_done = False
+                st.session_state.ligand_log  = "\n".join(log) + f"\nERROR: {e}"
 
-    st.markdown("---")
+    if st.session_state.ligand_done:
+        import py3Dmol
+        from rdkit import Chem; from rdkit.Chem import AllChem, Draw
+        st.markdown(f"{_pill('Ligand ready ✓','success')} {_pill(st.session_state.ligand_name)}",
+                    unsafe_allow_html=True)
+        with st.expander("📋 Preparation log", expanded=False):
+            st.markdown(f'<div class="log-box">{st.session_state.ligand_log}</div>',
+                        unsafe_allow_html=True)
+        c2d, c3d = st.columns(2)
+        with c2d:
+            st.markdown("**2D Structure**")
+            try:
+                m2 = Chem.MolFromSmiles(st.session_state.prot_smiles)
+                if m2:
+                    AllChem.Compute2DCoords(m2)
+                    buf = io.BytesIO()
+                    Draw.MolToImage(m2, size=(320,260)).save(buf, format="PNG")
+                    st.image(buf.getvalue(), width=320)
+            except Exception as e: st.info(f"2D unavailable: {e}")
+        with c3d:
+            st.markdown("**3D Conformer**")
+            try:
+                vl = py3Dmol.view(width="100%", height=280)
+                vl.setBackgroundColor("#0d1117")
+                vl.addModel(open(st.session_state.ligand_sdf).read(), "sdf")
+                vl.setStyle({}, {"stick":{"colorscheme":"yellowCarbon","radius":0.2}})
+                vl.zoomTo(); show3d(vl, height=280)
+            except Exception as e: st.info(f"3D unavailable: {e}")
 
-    # ── Interactive pose selector ──────────────────────────────────────────
-    st.markdown("**🔎 Interactive Pose Selector**")
-    if mols:
-        pose_idx = st.slider("Select pose", 1, len(mols), 1, key="pose_sel") - 1
-        selected_mol = mols[pose_idx]
+    st.markdown('</div>', unsafe_allow_html=True)
+    st.markdown('<hr class="step-divider">', unsafe_allow_html=True)
 
-        # Score for this pose
-        if df is not None and pose_idx < len(df):
-            row = df.iloc[pose_idx] if "Pose" not in df.columns else df[df["Pose"] == pose_idx + 1]
-            if not isinstance(row, pd.Series):
-                row = row.iloc[0] if len(row) else None
-            if row is not None:
-                aff = row["Affinity (kcal/mol)"] if isinstance(row, pd.Series) else None
-                if aff is not None:
+    # ── Step 3: Docking ───────────────────────────────────────────────────────
+    card_cls = "step-card done" if st.session_state.docking_done else "step-card"
+    st.markdown(f'<div class="{card_cls}">', unsafe_allow_html=True)
+    st.markdown('<div class="step-title">Step 3 of 4</div>', unsafe_allow_html=True)
+    st.markdown('<div class="step-heading">🚀 Docking with AutoDock Vina</div>', unsafe_allow_html=True)
+
+    cd1, cd2 = st.columns([1.5, 1])
+    with cd1:
+        exh_sl = st.slider("Exhaustiveness", 4, 64, 16, 2, key="exh_slider")
+        nm_sl  = st.slider("Number of poses", 5, 20, 10, 1, key="n_modes")
+        er_sl  = st.slider("Energy range (kcal/mol)", 1, 5, 3, 1, key="e_range")
+    with cd2:
+        est = max(1, exh_sl // 8)
+        st.markdown(
+            f'<div style="background:#21262d;border:1px solid #30363d;border-radius:8px;padding:16px;">'
+            f'<div style="color:#8b949e;font-size:0.8rem">ESTIMATED TIME</div>'
+            f'<div style="font-family:\'IBM Plex Mono\',monospace;font-size:2rem;color:#d29922">'
+            f'~{est}–{est*3} min</div>'
+            f'<div style="color:#8b949e;font-size:0.8rem">exhaustiveness = {exh_sl}</div>'
+            f'</div>', unsafe_allow_html=True)
+
+    run_dock_btn = st.button("▶ Run Docking", key="btn_dock", type="primary",
+                             disabled=not st.session_state.ligand_done)
+    if not st.session_state.ligand_done: st.caption("⚠ Complete Steps 1 & 2 first.")
+
+    if run_dock_btn:
+        base      = st.session_state.ligand_name
+        out_pdbqt = str(WORKDIR / f"{base}_out.pdbqt")
+        out_sdf   = str(WORKDIR / f"{base}_out.sdf")
+        with st.spinner(f"Running Vina (exhaustiveness={exh_sl})… ⏳"):
+            rc, vlog = run_cmd(
+                f'"{VINA_PATH}" --receptor "{st.session_state.receptor_pdbqt}" '
+                f'--ligand "{st.session_state.ligand_pdbqt}" '
+                f'--config "{st.session_state.config_txt}" '
+                f'--exhaustiveness {exh_sl} --num_modes {nm_sl} '
+                f'--energy_range {er_sl} --out "{out_pdbqt}"',
+                cwd=str(WORKDIR))
+            if rc != 0 or not os.path.exists(out_pdbqt):
+                st.error(f"❌ Vina failed (exit {rc})"); st.session_state.docking_done = False
+            else:
+                run_cmd(f'obabel "{out_pdbqt}" -O "{out_sdf}" 2>/dev/null')
+                data = []; cur = None
+                for line in open(out_pdbqt):
+                    line = line.strip()
+                    if line.startswith("MODEL"):
+                        try: cur = int(line.split()[1])
+                        except: pass
+                    elif line.startswith("REMARK VINA RESULT:"):
+                        try:
+                            p = line.split()
+                            data.append({"Pose":cur,"Affinity (kcal/mol)":float(p[3]),
+                                         "RMSD lb":float(p[4]),"RMSD ub":float(p[5])})
+                        except: pass
+                df = (pd.DataFrame(data).sort_values("Affinity (kcal/mol)").reset_index(drop=True)
+                      if data else None)
+                from rdkit import Chem
+                mols = ([m for m in Chem.SDMolSupplier(out_sdf, sanitize=False) if m]
+                        if os.path.exists(out_sdf) else [])
+                st.session_state.update(dict(
+                    output_pdbqt=out_pdbqt, output_sdf=out_sdf, dock_base=base,
+                    docking_done=True, docking_log=vlog, score_df=df, pose_mols=mols))
+
+    if st.session_state.docking_done:
+        st.markdown(f"{_pill('Docking complete ✓','success')}", unsafe_allow_html=True)
+        with st.expander("📋 Vina output log", expanded=False):
+            st.markdown(f'<div class="log-box">{st.session_state.docking_log}</div>',
+                        unsafe_allow_html=True)
+        if st.session_state.score_df is not None:
+            best = st.session_state.score_df["Affinity (kcal/mol)"].min()
+            cls  = "Very strong" if best<-11 else "Strong" if best<-9 else "Moderate" if best<-7 else "Weak"
+            st.markdown(
+                f'<div class="score-best">{best:.2f} <span class="score-unit">kcal/mol</span></div>'
+                f'<div style="color:#8b949e;font-size:0.9rem;margin-bottom:12px">'
+                f'Best pose — {cls} predicted binding</div>', unsafe_allow_html=True)
+
+    st.markdown('</div>', unsafe_allow_html=True)
+    st.markdown('<hr class="step-divider">', unsafe_allow_html=True)
+
+    # ── Step 4: Results ───────────────────────────────────────────────────────
+    card_cls = "step-card done" if st.session_state.docking_done else "step-card"
+    st.markdown(f'<div class="{card_cls}">', unsafe_allow_html=True)
+    st.markdown('<div class="step-title">Step 4 of 4</div>', unsafe_allow_html=True)
+    st.markdown('<div class="step-heading">📊 Results & Visualization</div>', unsafe_allow_html=True)
+
+    if not st.session_state.docking_done:
+        st.info("Complete Step 3 to see results here.")
+    else:
+        import py3Dmol
+        from rdkit import Chem
+        df   = st.session_state.score_df
+        mols = st.session_state.pose_mols or []
+
+        ct, cc = st.columns([1, 1.4])
+        with ct:
+            st.markdown("**Vina Score Table**")
+            if df is not None:
+                st.dataframe(df.style.background_gradient(
+                    cmap="RdYlGn", subset=["Affinity (kcal/mol)"],
+                    gmap=-df["Affinity (kcal/mol)"]),
+                    use_container_width=True, hide_index=True)
+        with cc:
+            st.markdown("**Affinity by Pose**")
+            if df is not None:
+                fig, ax = plt.subplots(figsize=(6, 3.5))
+                fig.patch.set_facecolor("#161b22"); ax.set_facecolor("#0d1117")
+                cols = ["#3fb950" if v==df["Affinity (kcal/mol)"].min() else "#58a6ff"
+                        for v in df["Affinity (kcal/mol)"]]
+                ax.bar(df["Pose"].astype(str), df["Affinity (kcal/mol)"],
+                       color=cols, edgecolor="#30363d", linewidth=0.6)
+                ax.invert_yaxis()
+                ax.set_xlabel("Pose", color="#8b949e", fontsize=9)
+                ax.set_ylabel("Affinity (kcal/mol)", color="#8b949e", fontsize=9)
+                ax.tick_params(colors="#8b949e", labelsize=8)
+                for sp in ax.spines.values(): sp.set_edgecolor("#30363d")
+                fig.tight_layout(); st.pyplot(fig, use_container_width=True); plt.close(fig)
+
+        st.markdown("---")
+        st.markdown("**🎬 Animated Pose Viewer**")
+        anim_spd = st.slider("Interval (ms)", 500, 3000, 1500, 250, key="anim_spd")
+        if st.session_state.output_sdf and os.path.exists(st.session_state.output_sdf):
+            sdf_txt = open(st.session_state.output_sdf).read()
+            va = py3Dmol.view(width="100%", height=440); va.setBackgroundColor("#0d1117")
+            mai = 0
+            if st.session_state.receptor_fh and os.path.exists(st.session_state.receptor_fh):
+                va.addModel(open(st.session_state.receptor_fh).read(), "pdb")
+                va.setStyle({"model":mai}, {"cartoon":{"color":"spectrum","opacity":0.55},
+                                             "stick":{"radius":0.1,"opacity":0.2}}); mai+=1
+            if st.session_state.ligand_pdb_path and os.path.exists(st.session_state.ligand_pdb_path):
+                va.addModel(open(st.session_state.ligand_pdb_path).read(), "pdb")
+                va.setStyle({"model":mai}, {"stick":{"colorscheme":"magentaCarbon","radius":0.22}}); mai+=1
+            va.addModelsAsFrames(sdf_txt)
+            va.setStyle({"model":mai}, {"stick":{"colorscheme":"greenCarbon","radius":0.25}})
+            va.animate({"interval":anim_spd,"loop":"forward"})
+            va.zoomTo(); va.zoom(0.85); va.rotate(30); show3d(va, height=440)
+
+        st.markdown("---")
+        st.markdown("**🔎 Interactive Pose Selector**")
+        if mols:
+            pose_idx = st.slider("Select pose", 1, len(mols), 1, key="pose_sel") - 1
+            sel_mol  = mols[pose_idx]
+            if df is not None:
+                row = df[df["Pose"]==pose_idx+1]
+                if len(row):
+                    aff = row.iloc[0]["Affinity (kcal/mol)"]
                     st.markdown(
                         f'{_pill(f"Pose {pose_idx+1}/{len(mols)}")} '
-                        f'{_pill(f"Affinity: {aff:.2f} kcal/mol", "success" if aff < -8 else "warn")}',
-                        unsafe_allow_html=True,
-                    )
-
-        col_pv, col_dl = st.columns([3, 1])
-        with col_pv:
-            # Render selected pose with receptor
-            from rdkit.Chem import AllChem
-            try:
-                sdf_one = Chem.MolToMolBlock(selected_mol)
-                v2 = py3Dmol.view(width="100%", height=400)
-                v2.setBackgroundColor("#0d1117")
-                midx2 = 0
+                        f'{_pill(f"Affinity: {aff:.2f} kcal/mol","success" if aff<-8 else "warn")}',
+                        unsafe_allow_html=True)
+            cpv, cdl = st.columns([3, 1])
+            with cpv:
+                try:
+                    v2 = py3Dmol.view(width="100%", height=400); v2.setBackgroundColor("#0d1117")
+                    mi2 = 0
+                    if st.session_state.receptor_fh and os.path.exists(st.session_state.receptor_fh):
+                        v2.addModel(open(st.session_state.receptor_fh).read(), "pdb")
+                        v2.setStyle({"model":mi2}, {"cartoon":{"color":"spectrum","opacity":0.5},
+                                                     "stick":{"radius":0.08,"opacity":0.15}}); mi2+=1
+                    if st.session_state.ligand_pdb_path and os.path.exists(st.session_state.ligand_pdb_path):
+                        v2.addModel(open(st.session_state.ligand_pdb_path).read(), "pdb")
+                        v2.setStyle({"model":mi2}, {"stick":{"colorscheme":"magentaCarbon","radius":0.2}}); mi2+=1
+                    v2.addModel(Chem.MolToMolBlock(sel_mol), "mol")
+                    v2.setStyle({"model":mi2}, {"stick":{"colorscheme":"cyanCarbon","radius":0.28}})
+                    v2.zoomTo(); show3d(v2, height=400)
+                except Exception as e: st.info(f"Viewer error: {e}")
+            with cdl:
+                st.markdown("**Download**")
+                sp = str(WORKDIR / f"pose_{pose_idx+1}.sdf")
+                with Chem.SDWriter(sp) as w: w.write(sel_mol)
+                st.download_button(f"⬇ Pose {pose_idx+1} (.sdf)", open(sp,"rb"),
+                    file_name=f"pose_{pose_idx+1}.sdf", key=f"dl_p_{pose_idx}")
+                st.download_button("⬇ All poses (.pdbqt)",
+                    open(st.session_state.output_pdbqt,"rb"),
+                    file_name=f"{st.session_state.dock_base}_out.pdbqt", key="dl_pdbqt")
+                if df is not None:
+                    st.download_button("⬇ Scores (.csv)", df.to_csv(index=False).encode(),
+                        file_name=f"{st.session_state.dock_base}_scores.csv",
+                        mime="text/csv", key="dl_csv")
                 if st.session_state.receptor_fh and os.path.exists(st.session_state.receptor_fh):
-                    v2.addModel(open(st.session_state.receptor_fh).read(), "pdb")
-                    v2.setStyle({"model": midx2}, {"cartoon": {"color": "spectrum", "opacity": 0.5},
-                                                    "stick": {"radius": 0.08, "opacity": 0.15}})
-                    midx2 += 1
-                if st.session_state.ligand_pdb_path and os.path.exists(st.session_state.ligand_pdb_path):
-                    v2.addModel(open(st.session_state.ligand_pdb_path).read(), "pdb")
-                    v2.setStyle({"model": midx2}, {"stick": {"colorscheme": "magentaCarbon", "radius": 0.2}})
-                    midx2 += 1
-                v2.addModel(sdf_one, "mol")
-                v2.setStyle({"model": midx2}, {"stick": {"colorscheme": "cyanCarbon", "radius": 0.28}})
-                v2.zoomTo()  # fit all models
-                show3d(v2, height=400)
+                    st.download_button("⬇ Receptor (.pdb)",
+                        open(st.session_state.receptor_fh,"rb"),
+                        file_name="receptor.pdb", key="dl_rec")
+
+    st.markdown('</div>', unsafe_allow_html=True)
+
+
+# ╔════════════════════════════════════════════════════════════════════════════╗
+#  TAB 2 — BATCH DOCKING
+# ╚════════════════════════════════════════════════════════════════════════════╝
+with tab_batch:
+
+    # Step B1: Receptor (shared function, prefix="b_")
+    _receptor_section(pfx="b_", wdir=BATCH_WORKDIR, step_label="Step B1 of B4")
+
+    # ── Step B2 + B3: Ligand Input + Engine (combined card) ───────────────────
+    b_rec_done   = st.session_state.get("b_receptor_done", False)
+    b_batch_done = st.session_state.get("b_batch_done", False)
+    card_cls = "step-card done" if b_batch_done else "step-card"
+    st.markdown(f'<div class="{card_cls}">', unsafe_allow_html=True)
+    st.markdown('<div class="step-title">Step B2 of B4</div>', unsafe_allow_html=True)
+    st.markdown('<div class="step-heading">⚗️ Ligand Batch Input & Docking Engine</div>',
+                unsafe_allow_html=True)
+
+    col_b1, col_b2 = st.columns([1.6, 1])
+    with col_b1:
+        b_input_mode = st.radio("Input mode",
+            ["SMILES list (text)", "Upload .smi file", "Upload structure (.sdf/.mol2/.pdb)"],
+            key="b_input_mode")
+
+        if b_input_mode == "SMILES list (text)":
+            st.text_area("One `SMILES [name]` per line",
+                value=("COCCOC1=C(C=C2C(=C1)C(=NC=N2)NC3=CC=CC(=C3)C#C)OCCOC Erlotinib\n"
+                       "C1=CC(=CC=C1C2=CC(=O)C3=C(C=C(C=C3O2)O)O)O Apigenin\n"
+                       "C1=CC=C(C=C1)C2=CC(=O)C3=C(O2)C=C(C(=C3O)O)O Baicalein"),
+                height=150, key="b_smiles_text")
+        elif b_input_mode == "Upload .smi file":
+            st.file_uploader("Upload .smi file (SMILES [name] per line)",
+                             type=["smi","txt"], key="b_smi_file")
+        else:
+            st.file_uploader("Upload structure file",
+                             type=["sdf","mol2","pdb"], key="b_struct_file")
+
+        b_ph = st.number_input("Target pH for protonation", 0.0, 14.0, 7.4, 0.1, key="b_ph")
+        b_stereo = st.checkbox("Enumerate stereocenters (use first R/S isomer)", key="b_stereo")
+
+    with col_b2:
+        st.markdown("**Redocking validation**")
+        b_do_redock = st.checkbox("Enable redocking (co-crystal reference)", value=True, key="b_do_redock")
+        if b_do_redock:
+            st.text_input("Co-crystal SMILES [name]",
+                value="COCCOC1=C(C=C2C(=C1)C(=NC=N2)NC3=CC=CC(=C3)C#C)OCCOC Erlotinib",
+                key="b_redock_smiles")
+            st.caption("Reference score shown as dashed line in dot plot.")
+
+        st.markdown("**Docking engine**")
+        b_engine = st.radio("Engine", ["VINA", "VINAXB"], horizontal=True, key="b_engine")
+        if b_engine == "VINAXB" and not VINAXB_PATH:
+            st.warning("⚠ VinaXB unavailable — will use Vina.")
+
+        b_exh = st.slider("Exhaustiveness", 4, 32, 8, 2, key="b_exh")
+        b_nm  = st.slider("Poses per ligand", 5, 20, 10, 1, key="b_nm")
+        b_er  = st.slider("Energy range (kcal/mol)", 1, 5, 3, 1, key="b_er")
+
+    run_batch_btn = st.button("▶ Run Batch Docking", key="b_btn_dock", type="primary",
+                              disabled=not b_rec_done)
+    if not b_rec_done:
+        st.caption("⚠ Complete Step B1 first.")
+
+    # ── Batch run ─────────────────────────────────────────────────────────────
+    if run_batch_btn:
+        _rdkit_six_patch()
+        from rdkit import Chem; from rdkit.Chem import AllChem
+        from meeko import MoleculePreparation
+
+        b_ph_val      = st.session_state.get("b_ph", 7.4)
+        actual_engine = "VINAXB" if (b_engine=="VINAXB" and VINAXB_PATH) else "VINA"
+        rec_pdbqt     = st.session_state.get("b_receptor_pdbqt")
+        config        = st.session_state.get("b_config_txt")
+
+        # ── Parse SMILES input ─────────────────────────────────────────────
+        smiles_pairs = []
+        try:
+            mode = st.session_state.get("b_input_mode", "SMILES list (text)")
+            if mode == "SMILES list (text)":
+                for line in st.session_state.get("b_smiles_text","").strip().splitlines():
+                    line = line.strip()
+                    if not line or line.startswith("#"): continue
+                    pts  = line.split(None, 1)
+                    smiles_pairs.append((pts[0],
+                        pts[1].replace(" ","_") if len(pts)>1 else f"lig_{len(smiles_pairs)+1}"))
+            elif mode == "Upload .smi file":
+                fobj = st.session_state.get("b_smi_file")
+                if fobj is None: raise ValueError("No .smi file uploaded")
+                for line in fobj.read().decode().splitlines():
+                    line = line.strip()
+                    if not line or line.startswith("#"): continue
+                    pts  = line.split(None, 1)
+                    smiles_pairs.append((pts[0],
+                        pts[1].replace(" ","_") if len(pts)>1 else f"lig_{len(smiles_pairs)+1}"))
+            else:
+                fobj = st.session_state.get("b_struct_file")
+                if fobj is None: raise ValueError("No structure file uploaded")
+                ext  = Path(fobj.name).suffix.lower()
+                tmp  = str(BATCH_WORKDIR / f"input{ext}")
+                with open(tmp,"wb") as f: f.write(fobj.read())
+                if ext == ".sdf":
+                    for i, mol in enumerate(Chem.SDMolSupplier(tmp, sanitize=True)):
+                        if mol is None: continue
+                        nm = mol.GetProp("_Name") if mol.HasProp("_Name") else f"lig_{i+1}"
+                        smiles_pairs.append((Chem.MolToSmiles(mol), nm.replace(" ","_")))
+                else:
+                    run_cmd(f'obabel "{tmp}" -O "{tmp}.smi" --gen2D 2>/dev/null')
+                    for line in open(f"{tmp}.smi"):
+                        pts = line.strip().split(None, 1)
+                        if pts: smiles_pairs.append((pts[0],
+                            pts[1].replace(" ","_") if len(pts)>1 else f"lig_{len(smiles_pairs)+1}"))
+            if not smiles_pairs: raise ValueError("No valid SMILES found")
+        except Exception as e:
+            st.error(f"❌ Input parsing failed: {e}"); st.stop()
+
+        # Stereo enumeration
+        if st.session_state.get("b_stereo", False):
+            from rdkit.Chem.EnumerateStereoisomers import (
+                EnumerateStereoisomers, StereoEnumerationOptions)
+            expanded = []
+            for smi, nm in smiles_pairs:
+                mol = Chem.MolFromSmiles(smi)
+                if mol is None: expanded.append((smi, nm)); continue
+                isomers = list(EnumerateStereoisomers(mol,
+                    options=StereoEnumerationOptions(unique=True, maxIsomers=2)))
+                expanded.append((Chem.MolToSmiles(isomers[0]) if isomers else smi, nm))
+            smiles_pairs = expanded
+
+        # ── Inner helpers ──────────────────────────────────────────────────
+        def _prep_one(smi, name, ph, wdir):
+            try:
+                prot = smi
+                try:
+                    from dimorphite_dl import protonate_smiles
+                    vs = protonate_smiles(prot, ph_min=ph, ph_max=ph, max_variants=1)
+                    if vs: prot = vs[0]
+                except Exception: pass
+                mol = Chem.MolFromSmiles(prot)
+                if mol is None: raise ValueError(f"Cannot parse: {smi[:50]}")
+                mol = Chem.AddHs(mol)
+                try:    params = AllChem.ETKDGv3()
+                except: params = AllChem.ETKDG()
+                params.randomSeed = 42
+                if AllChem.EmbedMolecule(mol, params) == -1:
+                    AllChem.EmbedMolecule(mol, useRandomCoords=True, randomSeed=42)
+                if AllChem.MMFFHasAllMoleculeParams(mol): AllChem.MMFFOptimizeMolecule(mol, maxIters=500)
+                else:                                     AllChem.UFFOptimizeMolecule(mol, maxIters=500)
+                sdf_path   = str(wdir / f"{name}.sdf")
+                pdbqt_path = str(wdir / f"{name}.pdbqt")
+                with Chem.SDWriter(sdf_path) as w: w.write(mol)
+                prep = MoleculePreparation(); prep.prepare(mol)
+                with open(pdbqt_path,"w") as f: f.write(prep.write_pdbqt_string())
+                return pdbqt_path, None
             except Exception as e:
-                st.info(f"Pose viewer error: {e}")
+                return None, str(e)
 
-        with col_dl:
-            st.markdown("**Download**")
-            # Selected pose SDF
-            sel_sdf_path = str(WORKDIR / f"pose_{pose_idx+1}.sdf")
-            with Chem.SDWriter(sel_sdf_path) as w:
-                w.write(selected_mol)
-            with open(sel_sdf_path, "rb") as f:
-                st.download_button(
-                    f"⬇ Pose {pose_idx+1} (.sdf)",
-                    f, file_name=f"pose_{pose_idx+1}.sdf", key=f"dl_pose_{pose_idx}",
-                )
-            # Full output PDBQT
-            with open(st.session_state.output_pdbqt, "rb") as f:
-                st.download_button(
-                    "⬇ All poses (.pdbqt)",
-                    f, file_name=f"{st.session_state.dock_base}_out.pdbqt", key="dl_pdbqt",
-                )
-            # Score CSV
-            if df is not None:
-                csv_buf = df.to_csv(index=False).encode()
-                st.download_button(
-                    "⬇ Scores (.csv)",
-                    csv_buf, file_name=f"{st.session_state.dock_base}_scores.csv",
-                    mime="text/csv", key="dl_csv",
-                )
-            # Receptor PDB
-            if st.session_state.receptor_fh and os.path.exists(st.session_state.receptor_fh):
-                with open(st.session_state.receptor_fh, "rb") as f:
-                    st.download_button(
-                        "⬇ Receptor (.pdb)",
-                        f, file_name="receptor.pdb", key="dl_rec",
-                    )
+        def _dock_one(pdbqt_in, name, engine, exh, nm, er):
+            bin_p     = VINAXB_PATH if engine=="VINAXB" else VINA_PATH
+            out_pdbqt = str(BATCH_WORKDIR / f"{name}_out.pdbqt")
+            out_sdf   = str(BATCH_WORKDIR / f"{name}_out.sdf")
+            rc, log   = run_cmd(
+                f'"{bin_p}" --receptor "{rec_pdbqt}" --ligand "{pdbqt_in}" '
+                f'--config "{config}" --exhaustiveness {exh} --num_modes {nm} '
+                f'--energy_range {er} --out "{out_pdbqt}"',
+                cwd=str(BATCH_WORKDIR))
+            if rc != 0 or not os.path.exists(out_pdbqt):
+                return None, None, log, None
+            run_cmd(f'obabel "{out_pdbqt}" -O "{out_sdf}" 2>/dev/null')
+            top = None
+            for line in open(out_pdbqt):
+                ln = line.strip()
+                if (ln.startswith("REMARK VINA RESULT:") or
+                    ln.startswith("REMARK VINAXB RESULT:")):
+                    try: top = float(ln.split()[3]); break
+                    except: pass
+            return out_pdbqt, out_sdf, log, top
 
-st.markdown('</div>', unsafe_allow_html=True)
+        # ── Redocking ─────────────────────────────────────────────────────
+        redock_score = None; redock_sdf = None
+        if st.session_state.get("b_do_redock", False):
+            raw_rd = st.session_state.get("b_redock_smiles","").strip()
+            pts    = raw_rd.split(None, 1)
+            rd_smi = pts[0]
+            rd_nm  = pts[1].replace(" ","_") if len(pts)>1 else "redock"
+            with st.spinner(f"Redocking reference ligand ({rd_nm})…"):
+                rd_pdbqt, rd_err = _prep_one(rd_smi, "redock_"+rd_nm, b_ph_val, BATCH_WORKDIR)
+                if rd_pdbqt:
+                    _, rd_sdf_out, rd_log, rd_top = _dock_one(
+                        rd_pdbqt, "redock_"+rd_nm, actual_engine, b_exh, b_nm, b_er)
+                    if rd_top is not None:
+                        redock_score = rd_top; redock_sdf = rd_sdf_out
+                        st.success(f"✓ Redock reference: **{redock_score:.2f} kcal/mol** ({rd_nm})")
+                    else:
+                        st.warning(f"⚠ Redocking failed. {rd_log[:200]}")
+                else:
+                    st.warning(f"⚠ Redock prep failed: {rd_err}")
+
+        # ── Main batch loop ────────────────────────────────────────────────
+        results  = []
+        n        = len(smiles_pairs)
+        prog     = st.progress(0, text=f"Docking 0/{n}…")
+        log_slot = st.empty()
+        all_logs = []
+
+        for i, (smi, name) in enumerate(smiles_pairs):
+            prog.progress(i/n, text=f"Docking {name} ({i+1}/{n})…")
+            pdbqt_in, prep_err = _prep_one(smi, name, b_ph_val, BATCH_WORKDIR)
+            if pdbqt_in is None:
+                results.append({"Name":name,"SMILES":smi,"Top Score":None,
+                                 "Poses":0,"Status":f"PREP FAILED: {prep_err}"})
+                all_logs.append(f"[{name}] PREP ERROR: {prep_err}"); continue
+            out_pdbqt, out_sdf, dock_log, top = _dock_one(
+                pdbqt_in, name, actual_engine, b_exh, b_nm, b_er)
+            all_logs.append(f"[{name}] score={top} | {dock_log[:120]}")
+            log_slot.markdown(
+                f'<div class="log-box">{"".join(all_logs[-5:])}</div>',
+                unsafe_allow_html=True)
+            if top is None:
+                results.append({"Name":name,"SMILES":smi,"Top Score":None,
+                                 "Poses":0,"Status":"DOCK FAILED"}); continue
+            n_poses = 0
+            if out_sdf and os.path.exists(out_sdf):
+                n_poses = sum(1 for m in Chem.SDMolSupplier(out_sdf, sanitize=False) if m)
+            results.append({"Name":name,"SMILES":smi,"Top Score":top,"Poses":n_poses,
+                             "out_pdbqt":out_pdbqt,"out_sdf":out_sdf,"Status":"OK"})
+
+        prog.progress(1.0, text=f"✓ Complete — {n} ligands docked")
+        log_slot.empty()
+        st.session_state.update({
+            "b_batch_done": True, "b_batch_results": results,
+            "b_batch_log": "\n".join(all_logs),
+            "b_redock_score": redock_score, "b_redock_sdf": redock_sdf,
+            "b_batch_engine": actual_engine,
+        })
+
+    st.markdown('</div>', unsafe_allow_html=True)
+    st.markdown('<hr class="step-divider">', unsafe_allow_html=True)
+
+    # ── Step B3: Results ──────────────────────────────────────────────────────
+    b_batch_done = st.session_state.get("b_batch_done", False)
+    card_cls = "step-card done" if b_batch_done else "step-card"
+    st.markdown(f'<div class="{card_cls}">', unsafe_allow_html=True)
+    st.markdown('<div class="step-title">Step B3 of B4</div>', unsafe_allow_html=True)
+    st.markdown('<div class="step-heading">📊 Batch Results</div>', unsafe_allow_html=True)
+
+    if not b_batch_done:
+        st.info("Complete Step B2 to see batch results here.")
+    else:
+        import py3Dmol
+        from rdkit import Chem
+        results      = st.session_state.get("b_batch_results", [])
+        redock_score = st.session_state.get("b_redock_score")
+        engine_used  = st.session_state.get("b_batch_engine", "VINA")
+
+        n_ok = sum(1 for r in results if r["Status"]=="OK")
+        n_fail = len(results) - n_ok
+        st.markdown(
+            f"{_pill(f'{n_ok} ligands docked ✓','success')} {_pill(f'Engine: {engine_used}')}"
+            + (f" {_pill(f'{n_fail} failed','warn')}" if n_fail else ""),
+            unsafe_allow_html=True)
+        with st.expander("📋 Full docking log", expanded=False):
+            st.markdown(f'<div class="log-box">{st.session_state.get("b_batch_log","")}</div>',
+                        unsafe_allow_html=True)
+
+        # Score table + dot plot
+        df_res = pd.DataFrame([{"Name":r["Name"],"Top Score (kcal/mol)":r["Top Score"],
+                                  "Poses":r["Poses"],"Status":r["Status"]} for r in results])
+        ok_df  = (df_res[df_res["Status"]=="OK"]
+                  .sort_values("Top Score (kcal/mol)").reset_index(drop=True))
+
+        ct2, cp2 = st.columns([1, 1.6])
+        with ct2:
+            st.markdown("**Score Table**")
+            st.dataframe(df_res, use_container_width=True, hide_index=True)
+        with cp2:
+            st.markdown(f"**Top Score per Ligand** — {engine_used}")
+            if not ok_df.empty:
+                fig, ax = plt.subplots(figsize=(max(5, len(ok_df)*0.6+1.5), 4))
+                fig.patch.set_facecolor("#161b22"); ax.set_facecolor("#0d1117")
+                scores = ok_df["Top Score (kcal/mol)"].values
+                names  = ok_df["Name"].values
+                best_i = int(np.argmin(scores))
+                colors = ["#3fb950" if i==best_i else "#58a6ff" for i in range(len(scores))]
+                ax.scatter(names, scores, color=colors, s=90, zorder=3,
+                           edgecolors="#30363d", linewidths=0.5)
+                ax.plot(names, scores, color="#30363d", linewidth=0.8, zorder=2)
+                if redock_score is not None:
+                    ax.axhline(redock_score, color="#f85149", linewidth=1.5,
+                               linestyle="--", label=f"Co-crystal ref: {redock_score:.2f}")
+                    ax.legend(facecolor="#21262d", edgecolor="#30363d",
+                              labelcolor="#c9d1d9", fontsize=8)
+                ax.invert_yaxis()
+                ax.set_ylabel(f"{engine_used} score (kcal/mol)", color="#8b949e", fontsize=9)
+                ax.set_xlabel("Ligand", color="#8b949e", fontsize=9)
+                ax.tick_params(colors="#8b949e", labelsize=7)
+                plt.xticks(rotation=40, ha="right")
+                for sp in ax.spines.values(): sp.set_edgecolor("#30363d")
+                ax.grid(axis="y", color="#21262d", linewidth=0.5)
+                fig.tight_layout()
+                st.pyplot(fig, use_container_width=True); plt.close(fig)
+
+        st.markdown("---")
+
+        # Pose browser
+        st.markdown("**🔎 Pose Browser**")
+        ok_results = [r for r in results
+                      if r["Status"]=="OK" and r.get("out_sdf") and os.path.exists(r["out_sdf"])]
+        if ok_results:
+            sel_nm  = st.selectbox("Select ligand", [r["Name"] for r in ok_results], key="b_lig_sel")
+            sel_res = next(r for r in ok_results if r["Name"]==sel_nm)
+            b_mols  = [m for m in Chem.SDMolSupplier(sel_res["out_sdf"], sanitize=False) if m]
+            if b_mols:
+                b_pose_i = st.slider("Pose", 1, len(b_mols), 1, key="b_pose_sel") - 1
+                top_s    = sel_res["Top Score"]
+                st.markdown(
+                    f'{_pill(f"Pose {b_pose_i+1}/{len(b_mols)}")} '
+                    f'{_pill(f"Top: {top_s:.2f} kcal/mol","success" if top_s<-8 else "warn")}',
+                    unsafe_allow_html=True)
+                cbv, cbd = st.columns([3, 1])
+                with cbv:
+                    try:
+                        vb = py3Dmol.view(width="100%", height=420)
+                        vb.setBackgroundColor("#0d1117"); bmi = 0
+                        rec_fh = st.session_state.get("b_receptor_fh")
+                        if rec_fh and os.path.exists(rec_fh):
+                            vb.addModel(open(rec_fh).read(), "pdb")
+                            vb.setStyle({"model":bmi}, {"cartoon":{"color":"spectrum","opacity":0.55},
+                                                         "stick":{"radius":0.08,"opacity":0.15}}); bmi+=1
+                        lig_p = st.session_state.get("b_ligand_pdb_path")
+                        if lig_p and os.path.exists(lig_p):
+                            vb.addModel(open(lig_p).read(), "pdb")
+                            vb.setStyle({"model":bmi}, {"stick":{"colorscheme":"magentaCarbon","radius":0.2}}); bmi+=1
+                        vb.addModel(Chem.MolToMolBlock(b_mols[b_pose_i]), "mol")
+                        vb.setStyle({"model":bmi}, {"stick":{"colorscheme":"cyanCarbon","radius":0.28}})
+                        vb.zoomTo(); show3d(vb, height=420)
+                    except Exception as e: st.info(f"Viewer error: {e}")
+                with cbd:
+                    st.markdown("**Download**")
+                    sp3 = str(BATCH_WORKDIR / f"{sel_nm}_pose{b_pose_i+1}.sdf")
+                    with Chem.SDWriter(sp3) as w: w.write(b_mols[b_pose_i])
+                    st.download_button(f"⬇ Pose {b_pose_i+1} (.sdf)", open(sp3,"rb"),
+                        file_name=f"{sel_nm}_pose{b_pose_i+1}.sdf", key="b_dl_pose")
+                    st.download_button("⬇ All poses (.pdbqt)",
+                        open(sel_res["out_pdbqt"],"rb"),
+                        file_name=f"{sel_nm}_out.pdbqt", key="b_dl_pdbqt")
+
+        st.markdown("---")
+
+        # Bulk downloads
+        st.markdown("**⬇ Download All Results**")
+        c_csv, c_zip = st.columns(2)
+        with c_csv:
+            if not ok_df.empty:
+                st.download_button("⬇ Top scores (.csv)",
+                    ok_df.to_csv(index=False).encode(),
+                    file_name="batch_scores.csv", mime="text/csv", key="b_dl_csv")
+        with c_zip:
+            zb = io.BytesIO()
+            with zipfile.ZipFile(zb, "w", zipfile.ZIP_DEFLATED) as zf:
+                for r in ok_results:
+                    if r.get("out_sdf") and os.path.exists(r["out_sdf"]):
+                        zf.write(r["out_sdf"], f"poses/{r['Name']}_out.sdf")
+                    if r.get("out_pdbqt") and os.path.exists(r["out_pdbqt"]):
+                        zf.write(r["out_pdbqt"], f"pdbqt/{r['Name']}_out.pdbqt")
+                if not ok_df.empty:
+                    zf.writestr("batch_scores.csv", ok_df.to_csv(index=False))
+                rec_fh = st.session_state.get("b_receptor_fh")
+                if rec_fh and os.path.exists(rec_fh):
+                    zf.write(rec_fh, "receptor.pdb")
+            zb.seek(0)
+            st.download_button("⬇ All results (.zip)", zb,
+                file_name="batch_docking_results.zip",
+                mime="application/zip", key="b_dl_zip")
+
+    st.markdown('</div>', unsafe_allow_html=True)
+
 
 # ─── Footer ───────────────────────────────────────────────────────────────────
 st.markdown('<hr class="step-divider">', unsafe_allow_html=True)
 st.markdown(
-    '<div style="text-align:center;color:#484f58;font-size:0.78rem;font-family:\'IBM Plex Mono\',monospace;">'
-    'AutoDock Vina 1.2.7 · Meeko · RDKit · OpenBabel · py3Dmol<br>'
+    '<div style="text-align:center;color:#484f58;font-size:0.78rem;'
+    'font-family:\'IBM Plex Mono\',monospace;">'
+    'AutoDock Vina 1.2.7 · VinaXB · Meeko · RDKit · OpenBabel · py3Dmol<br>'
     'Eberhardt et al. J. Chem. Inf. Model. 2021, 61, 3891–3898 &nbsp;·&nbsp; '
     '<a href="https://pubs.acs.org/doi/10.1021/acs.jcim.5c02852" target="_blank" '
-    'style="color:#58a6ff;text-decoration:none;">DFDD — Hengphasatporn et al. J. Chem. Inf. Model. 2026</a>'
+    'style="color:#58a6ff;text-decoration:none;">'
+    'DFDD — Hengphasatporn et al. J. Chem. Inf. Model. 2026</a>'
     '</div>',
     unsafe_allow_html=True,
 )
