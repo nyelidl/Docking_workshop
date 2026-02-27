@@ -233,6 +233,13 @@ st.markdown(
     "Complete each step in order — results persist as you scroll down."
 )
 
+st.markdown(
+    "🧬 Assembled code for Molecular Docking using AutoDock Vina 1.2.7 &nbsp;|&nbsp; "
+    "For questions: [kowith@ccs.tsukuba.ac.jp](mailto:kowith@ccs.tsukuba.ac.jp)  \n"
+    "This is part of the **DFDD Project**.",
+    unsafe_allow_html=True,
+)
+
 if VINA_PATH is None:
     st.error(f"❌ Vina binary could not be downloaded. Error: {vina_err}")
     st.stop()
@@ -916,7 +923,9 @@ st.markdown('<hr class="step-divider">', unsafe_allow_html=True)
 st.markdown(
     '<div style="text-align:center;color:#484f58;font-size:0.78rem;font-family:\'IBM Plex Mono\',monospace;">'
     'AutoDock Vina 1.2.7 · Meeko · RDKit · OpenBabel · py3Dmol<br>'
-    'Eberhardt et al. J. Chem. Inf. Model. 2021, 61, 3891–3898'
+    'Eberhardt et al. J. Chem. Inf. Model. 2021, 61, 3891–3898 &nbsp;·&nbsp; '
+    '<a href="https://pubs.acs.org/doi/10.1021/acs.jcim.5c02852" target="_blank" '
+    'style="color:#58a6ff;text-decoration:none;">DFDD — Hengphasatporn et al. J. Chem. Inf. Model. 2026</a>'
     '</div>',
     unsafe_allow_html=True,
 )
