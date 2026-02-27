@@ -164,7 +164,7 @@ _DEFAULTS = dict(
     # Receptor
     pdb_token=None, raw_pdb=None, receptor_fh=None, receptor_pdbqt=None,
     box_pdb=None, config_txt=None,
-    cx=None, cy=None, cz=None, sx=16, sy=16, sz=16,
+    cx=None, cy=None, cz=None,
     ligand_pdb_path=None, receptor_done=False, receptor_log="",
     # Ligand
     ligand_pdbqt=None, ligand_sdf=None, ligand_name="ELR",
@@ -407,7 +407,7 @@ if run_receptor_btn:
             st.session_state.update(dict(
                 raw_pdb=raw_pdb_path, receptor_fh=rec_fh, receptor_pdbqt=rec_pdbqt,
                 box_pdb=box_pdb_path, config_txt=config_path,
-                cx=cx, cy=cy, cz=cz, sx=sx, sy=sy, sz=sz,
+                cx=cx, cy=cy, cz=cz,
                 ligand_pdb_path=ligand_pdb_path,
                 receptor_done=True, receptor_log="\n".join(log_lines),
             ))
