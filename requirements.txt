@@ -1,5 +1,4 @@
 # AutoDock Vina Streamlit App — Python Dependencies
-# Install with: pip install -r requirements.txt
 
 streamlit>=1.35
 prody>=2.4
@@ -13,3 +12,4 @@ pandas>=2.0
 matplotlib>=3.7
 numpy>=1.24
 gemmi>=0.6
+spyrmsd>=0.5
