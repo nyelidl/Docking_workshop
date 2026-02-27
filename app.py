@@ -460,7 +460,7 @@ with tab_basic:
 
     cl1, cl2 = st.columns([1.5, 1])
     with cl1:
-        smiles_in   = st.text_input("SMILES string",
+        smiles_in   = st.text_input("SMILES string [canonical smiles]",
             value="COCCOC1=C(C=C2C(=C1)C(=NC=N2)NC3=CC=CC(=C3)C#C)OCCOC",
             key="smiles_in")
         lig_name_in = st.text_input("Output name", value="ELR", key="lig_name_in")
