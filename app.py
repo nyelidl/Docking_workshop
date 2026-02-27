@@ -795,9 +795,9 @@ with tab_batch:
     col_b1, col_b2 = st.columns([1.6, 1])
     with col_b1:
         b_input_mode = st.radio("Input mode",
-            ["SMILES list (text)", "Upload .smi file", "Upload structure (.sdf/.mol2/.pdb)"],
+            ["SMILES list (text) [canonical smiles]", "Upload .smi file", "Upload structure (.sdf/.mol2/.pdb)"],
             key="b_input_mode")
-        if b_input_mode == "SMILES list (text)":
+        if b_input_mode == "SMILES list (text) [canonical smiles]":
             st.text_area("One `SMILES [name]` per line",
                 value=("COCCOC1=C(C=C2C(=C1)C(=NC=N2)NC3=CC=CC(=C3)C#C)OCCOC Erlotinib\n"
                        "C1=CC(=CC=C1C2=CC(=O)C3=C(C=C(C=C3O2)O)O)O Apigenin\n"
@@ -816,7 +816,7 @@ with tab_batch:
         b_do_redock = st.checkbox("Dock co-crystal ligand first as reference",
                                   value=True, key="b_do_redock")
         if b_do_redock:
-            st.text_input("Co-crystal SMILES [name]",
+            st.text_input("Co-crystal SMILES  [canonical smiles] [name]",
                 value="COCCOC1=C(C=C2C(=C1)C(=NC=N2)NC3=CC=CC(=C3)C#C)OCCOC Erlotinib",
                 key="b_redock_smiles")
             st.caption("Score shown as dashed reference line in plot.")
