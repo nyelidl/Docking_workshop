@@ -406,10 +406,10 @@ def _receptor_section(pfx: str, wdir: Path, step_label: str = "Step 1"):
 # ──────────────────────────────────────────────────────────────────────────────
 #  HEADER
 # ──────────────────────────────────────────────────────────────────────────────
-st.markdown("# 🧬 AutoDock Vina 1.2.7")
+st.markdown("# 🧬 AutoDock Vina 1.2.7 & VinaXB")
 st.markdown(
-    "Molecular docking powered by **AutoDock Vina**, **RDKit**, **Meeko**, and **OpenBabel**. "
-    "Choose **Basic** for a single ligand, **Batch** for multiple ligands with Vina or VinaXB."
+    "Molecular docking powered by **AutoDock Vina1.2.7 & VinaXB.** "
+    "Choose **Basic** for a single ligand, **Batch** for multiple ligands with Vina 1.2.7 or VinaXB."
 )
 if VINA_PATH is None:
     st.error(f"❌ Vina binary unavailable: {_vina_err}"); st.stop()
