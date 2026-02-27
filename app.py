@@ -998,7 +998,8 @@ with tab_batch:
                              "Poses": n_poses, "out_pdbqt": out_pdbqt,
                              "out_sdf": out_sdf, "Status": "OK"})
 
-        prog.progress(1.0, text=f"✓ Done — {n_ok := sum(1 for r in results if r['Status']=='OK')} docked")
+        n_ok_final = sum(1 for r in results if r["Status"] == "OK")
+        prog.progress(1.0, text=f"✓ Done — {n_ok_final}/{n} ligands docked successfully")
         log_slot.empty()
         st.session_state.update({
             "b_batch_done": True,
