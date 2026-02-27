@@ -676,7 +676,7 @@ with tab_basic:
                     df.style.background_gradient(
                         cmap="RdYlGn", subset=["Affinity (kcal/mol)"],
                         gmap=-df["Affinity (kcal/mol)"]),
-                    hide_index=True, width=None)
+                    hide_index=True, use_container_width=True)
         with cc:
             st.markdown("**Affinity by Pose**")
             if df is not None:
@@ -692,7 +692,7 @@ with tab_basic:
                 ax.tick_params(colors="#8b949e", labelsize=8)
                 for sp in ax.spines.values(): sp.set_edgecolor("#30363d")
                 fig.tight_layout()
-                st.pyplot(fig); plt.close(fig)
+                st.pyplot(fig, use_container_width=True); plt.close(fig)
 
         st.markdown("---")
 
@@ -1051,7 +1051,7 @@ with tab_batch:
         ct2, cp2 = st.columns([1, 1.6])
         with ct2:
             st.markdown("**Score Table**")
-            st.dataframe(df_res, hide_index=True, width=None)
+            st.dataframe(df_res, hide_index=True, use_container_width=True)
         with cp2:
             st.markdown("**Top Score per Ligand**")
             if not ok_df.empty:
@@ -1077,7 +1077,7 @@ with tab_batch:
                 for sp in ax.spines.values(): sp.set_edgecolor("#30363d")
                 ax.grid(axis="y", color="#21262d", linewidth=0.5)
                 fig.tight_layout()
-                st.pyplot(fig); plt.close(fig)
+                st.pyplot(fig, use_container_width=True); plt.close(fig)
 
         st.markdown("---")
 
