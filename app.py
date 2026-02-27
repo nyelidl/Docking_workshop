@@ -186,12 +186,27 @@ WORKDIR = Path(st.session_state.workdir)
 
 # ─── Helpers ──────────────────────────────────────────────────────────────────
 def show3d(view, height=520):
-    """Render a py3Dmol view inside Streamlit."""
+    """Render a py3Dmol view inside Streamlit — responsive width."""
     try:
         from stmol import showmol
         showmol(view, height=height)
     except ImportError:
-        components.html(view._make_html(), height=height, scrolling=False)
+        import re as _re
+        raw_html = view._make_html()
+        # py3Dmol hard-codes a pixel width in the generated HTML/JS;
+        # replace every occurrence so the canvas fills its container
+        # on any screen size (phone, tablet, laptop).
+        responsive_html = _re.sub(
+            r'(width\s*[:=]\s*)["\']?\d+px?["\']?',
+            r'\g<1>100%',
+            raw_html,
+        )
+        responsive_html = (
+            '<div style="width:100%;overflow:hidden">'
+            + responsive_html
+            + '</div>'
+        )
+        components.html(responsive_html, height=height, scrolling=False)
 
 def _pill(text, kind="info"):
     cls = {"info": "result-pill", "success": "success-pill", "warn": "warn-pill"}.get(kind, "result-pill")
@@ -439,7 +454,7 @@ if st.session_state.receptor_done:
 
     # 3D viewer
     with st.expander("🔭 3D: Receptor + Docking Box", expanded=True):
-        view = py3Dmol.view(width=820, height=500)
+        view = py3Dmol.view(width="100%", height=480)
         view.setBackgroundColor("#0d1117")
         idx = 0
         for path, style in [
@@ -453,9 +468,10 @@ if st.session_state.receptor_done:
         if st.session_state.ligand_pdb_path and os.path.exists(st.session_state.ligand_pdb_path):
             view.addModel(open(st.session_state.ligand_pdb_path).read(), "pdb")
             view.setStyle({"model": idx}, {"stick": {"colorscheme": "magentaCarbon", "radius": 0.25}})
-        view.zoomTo({"model": 1})
-        view.zoom(0.7)
-        show3d(view, height=500)
+        # zoomTo() with no args fits ALL models — box is never clipped on narrow screens
+        view.zoomTo()
+        view.zoom(0.85)
+        show3d(view, height=480)
 
 st.markdown('</div>', unsafe_allow_html=True)
 st.markdown('<hr class="step-divider">', unsafe_allow_html=True)
@@ -630,7 +646,7 @@ if st.session_state.ligand_done:
         st.markdown("**3D Conformer**")
         try:
             sdf_content = open(st.session_state.ligand_sdf).read()
-            v = py3Dmol.view(width=380, height=280)
+            v = py3Dmol.view(width="100%", height=280)
             v.setBackgroundColor("#0d1117")
             v.addModel(sdf_content, "sdf")
             v.setStyle({}, {"stick": {"colorscheme": "yellowCarbon", "radius": 0.2}})
@@ -814,7 +830,7 @@ else:
 
     if os.path.exists(st.session_state.output_sdf):
         sdf_text = open(st.session_state.output_sdf).read()
-        v = py3Dmol.view(width=860, height=540)
+        v = py3Dmol.view(width="100%", height=440)
         v.setBackgroundColor("#0d1117")
         midx = 0
         # Receptor
@@ -832,9 +848,10 @@ else:
         v.addModelsAsFrames(sdf_text)
         v.setStyle({"model": midx}, {"stick": {"colorscheme": "greenCarbon", "radius": 0.25}})
         v.animate({"interval": anim_speed, "loop": "forward"})
-        v.zoomTo({"model": 0})
+        v.zoomTo()  # fit all — never clips box on narrow screens
+        v.zoom(0.85)
         v.rotate(30)
-        show3d(v, height=540)
+        show3d(v, height=440)
 
     st.markdown("---")
 
@@ -864,7 +881,7 @@ else:
             from rdkit.Chem import AllChem
             try:
                 sdf_one = Chem.MolToMolBlock(selected_mol)
-                v2 = py3Dmol.view(width=620, height=400)
+                v2 = py3Dmol.view(width="100%", height=400)
                 v2.setBackgroundColor("#0d1117")
                 midx2 = 0
                 if st.session_state.receptor_fh and os.path.exists(st.session_state.receptor_fh):
@@ -878,7 +895,7 @@ else:
                     midx2 += 1
                 v2.addModel(sdf_one, "mol")
                 v2.setStyle({"model": midx2}, {"stick": {"colorscheme": "cyanCarbon", "radius": 0.28}})
-                v2.zoomTo({"model": midx2})
+                v2.zoomTo()  # fit all models
                 show3d(v2, height=400)
             except Exception as e:
                 st.info(f"Pose viewer error: {e}")
