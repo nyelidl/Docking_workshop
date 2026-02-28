@@ -221,6 +221,8 @@ _DEFAULTS = dict(
     # Batch — results
     b_batch_done=False, b_batch_results=None, b_batch_log="",
     b_redock_score=None, b_redock_result=None,
+    # Confirmed reference score (set when user clicks "Use this pose as reference")
+    b_confirmed_ref_score=None, b_confirmed_ref_pose=None, b_confirmed_ref_name=None,
 )
 for k, v in _DEFAULTS.items():
     if k not in st.session_state:
@@ -1023,14 +1025,16 @@ with tab_batch:
                 f'--energy_range {er} --out "{out_pdbqt}"',
                 cwd=str(BATCH_WORKDIR))
             if rc != 0 or not os.path.exists(out_pdbqt):
-                return None, None, log, None
+                return None, None, log, None, []
             run_cmd(f'obabel "{out_pdbqt}" -O "{out_sdf}" 2>/dev/null')
-            top = None
+            # Parse ALL per-pose scores (one REMARK VINA RESULT per MODEL)
+            pose_scores = []
             for line in open(out_pdbqt):
                 if line.strip().startswith("REMARK VINA RESULT:"):
-                    try: top = float(line.split()[3]); break
+                    try: pose_scores.append(float(line.split()[3]))
                     except: pass
-            return out_pdbqt, out_sdf, log, top
+            top = pose_scores[0] if pose_scores else None
+            return out_pdbqt, out_sdf, log, top, pose_scores
 
         # ── Redocking ──────────────────────────────────────────────────────
         redock_score  = None
@@ -1043,7 +1047,7 @@ with tab_batch:
             with st.spinner(f"Docking reference ligand ({rd_nm})…"):
                 rd_pdbqt, rd_err = _prep_one(rd_smi, "redock_" + rd_nm, b_ph_val, BATCH_WORKDIR)
                 if rd_pdbqt:
-                    rd_out_pdbqt, rd_out_sdf, _, rd_top = _dock_one(
+                    rd_out_pdbqt, rd_out_sdf, _, rd_top, rd_pose_scores = _dock_one(
                         rd_pdbqt, "redock_" + rd_nm, b_exh, b_nm, b_er)
                     if rd_top is not None:
                         redock_score = rd_top
@@ -1054,14 +1058,15 @@ with tab_batch:
                                 1 for m in Chem.SDMolSupplier(rd_out_sdf, sanitize=False) if m)
                         # Store as a browsable result entry (flagged with is_redock=True)
                         redock_result = {
-                            "Name":      f"⭐ {rd_nm} (co-crystal ref)",
-                            "SMILES":    rd_smi,
-                            "Top Score": rd_top,
-                            "Poses":     rd_n_poses,
-                            "out_pdbqt": rd_out_pdbqt,
-                            "out_sdf":   rd_out_sdf,
-                            "Status":    "OK",
-                            "is_redock": True,
+                            "Name":        f"⭐ {rd_nm} (co-crystal ref)",
+                            "SMILES":      rd_smi,
+                            "Top Score":   rd_top,
+                            "pose_scores": rd_pose_scores,
+                            "Poses":       rd_n_poses,
+                            "out_pdbqt":   rd_out_pdbqt,
+                            "out_sdf":     rd_out_sdf,
+                            "Status":      "OK",
+                            "is_redock":   True,
                         }
                         st.success(f"✓ Reference score: **{redock_score:.2f} kcal/mol** ({rd_nm})")
                     else:
@@ -1084,7 +1089,7 @@ with tab_batch:
                                  "Poses": 0, "Status": f"PREP FAILED: {prep_err}"})
                 all_logs.append(f"[{name}] PREP ERROR: {prep_err}")
                 continue
-            out_pdbqt, out_sdf, dock_log, top = _dock_one(
+            out_pdbqt, out_sdf, dock_log, top, pose_scores = _dock_one(
                 pdbqt_in, name, b_exh, b_nm, b_er)
             all_logs.append(f"[{name}] score={top} | {dock_log[:120]}")
             log_slot.markdown(
@@ -1098,6 +1103,7 @@ with tab_batch:
             if out_sdf and os.path.exists(out_sdf):
                 n_poses = sum(1 for m in Chem.SDMolSupplier(out_sdf, sanitize=False) if m)
             results.append({"Name": name, "SMILES": smi, "Top Score": top,
+                             "pose_scores": pose_scores,
                              "Poses": n_poses, "out_pdbqt": out_pdbqt,
                              "out_sdf": out_sdf, "Status": "OK"})
 
@@ -1105,11 +1111,15 @@ with tab_batch:
         prog.progress(1.0, text=f"✓ Done — {n_ok_final}/{n} ligands docked successfully")
         log_slot.empty()
         st.session_state.update({
-            "b_batch_done":    True,
-            "b_batch_results": results,
-            "b_batch_log":     "\n".join(all_logs),
-            "b_redock_score":  redock_score,
-            "b_redock_result": redock_result,
+            "b_batch_done":           True,
+            "b_batch_results":        results,
+            "b_batch_log":            "\n".join(all_logs),
+            "b_redock_score":         redock_score,
+            "b_redock_result":        redock_result,
+            # Reset confirmed ref — user must re-confirm after each new run
+            "b_confirmed_ref_score":  None,
+            "b_confirmed_ref_pose":   None,
+            "b_confirmed_ref_name":   None,
         })
 
     st.markdown('</div>', unsafe_allow_html=True)
@@ -1125,9 +1135,14 @@ with tab_batch:
     else:
         import py3Dmol
         from rdkit import Chem
-        results       = st.session_state.get("b_batch_results", [])
-        redock_score  = st.session_state.get("b_redock_score")
-        redock_result = st.session_state.get("b_redock_result")
+        results              = st.session_state.get("b_batch_results", [])
+        redock_score         = st.session_state.get("b_redock_score")
+        redock_result        = st.session_state.get("b_redock_result")
+        confirmed_ref_score  = st.session_state.get("b_confirmed_ref_score")
+        confirmed_ref_pose   = st.session_state.get("b_confirmed_ref_pose")
+        confirmed_ref_name   = st.session_state.get("b_confirmed_ref_name")
+        # The active reference line value: confirmed pose score > fallback to top redock score
+        active_ref_score = confirmed_ref_score if confirmed_ref_score is not None else redock_score
 
         n_ok   = sum(1 for r in results if r["Status"] == "OK")
         n_fail = len(results) - n_ok
@@ -1168,9 +1183,14 @@ with tab_batch:
                 ax.scatter(names, scores, color=colors, s=90, zorder=3,
                            edgecolors=_cc["border"], linewidths=0.5)
                 ax.plot(names, scores, color=_cc["border"], linewidth=0.8, zorder=2)
-                if redock_score is not None:
-                    ax.axhline(redock_score, color="#f85149", linewidth=1.5,
-                               linestyle="--", label=f"Co-crystal ref: {redock_score:.2f}")
+                if active_ref_score is not None:
+                    ref_label = (
+                        f"✓ Confirmed ref (pose {confirmed_ref_pose}): {active_ref_score:.2f} kcal/mol"
+                        if confirmed_ref_score is not None
+                        else f"Co-crystal ref (top pose): {active_ref_score:.2f} kcal/mol"
+                    )
+                    ax.axhline(active_ref_score, color="#f85149", linewidth=1.8,
+                               linestyle="--", label=ref_label)
                     ax.legend(facecolor=_cc["legend_bg"], edgecolor=_cc["border"],
                               labelcolor=_cc["text"], fontsize=8)
                 ax.set_ylabel("Vina score (kcal/mol)", color=_cc["muted"], fontsize=9)
@@ -1202,26 +1222,55 @@ with tab_batch:
             sel_nm = st.selectbox(
                 "Select ligand",
                 [r["Name"] for r in browsable],
-                index=0,          # defaults to co-crystal ref when present
+                index=0,
                 key="b_lig_sel",
             )
             sel_res = next(r for r in browsable if r["Name"] == sel_nm)
+            is_redock_sel = sel_res.get("is_redock", False)
 
-            # Visual badge for the co-crystal reference
-            if sel_res.get("is_redock"):
-                st.markdown(
-                    _pill("⭐ Co-crystal reference ligand", "warn"),
-                    unsafe_allow_html=True,
-                )
+            # ── Per-ligand pose scores (from stored list or fallback to top) ──
+            pose_scores_list = sel_res.get("pose_scores", [])
 
             b_mols = [m for m in Chem.SDMolSupplier(sel_res["out_sdf"], sanitize=False) if m]
             if b_mols:
+                # Pose slider
                 b_pose_i = st.slider("Pose", 1, len(b_mols), 1, key="b_pose_sel") - 1
-                top_s    = sel_res["Top Score"]
-                st.markdown(
-                    f'{_pill(f"Pose {b_pose_i+1}/{len(b_mols)}")} '
-                    f'{_pill(f"Top: {top_s:.2f} kcal/mol", "success" if top_s < -8 else "warn")}',
-                    unsafe_allow_html=True)
+
+                # Resolve score for this specific pose
+                if pose_scores_list and b_pose_i < len(pose_scores_list):
+                    this_pose_score = pose_scores_list[b_pose_i]
+                else:
+                    this_pose_score = sel_res["Top Score"]
+
+                score_kind = "success" if (this_pose_score is not None and this_pose_score < -8) else "warn"
+
+                # Score display row
+                row_pills = (
+                    f'{_pill(f"Pose {b_pose_i+1} / {len(b_mols)}")}'
+                    f'{_pill(f"Score: {this_pose_score:.2f} kcal/mol", score_kind) if this_pose_score is not None else ""}'
+                )
+                # Add delta vs best pose for non-best poses
+                if pose_scores_list and b_pose_i > 0 and len(pose_scores_list) > 1:
+                    delta = this_pose_score - pose_scores_list[0]
+                    row_pills += f' {_pill(f"Δ {delta:+.2f} vs pose 1")}'
+
+                # If this is the co-crystal ref, show confirmed state
+                if is_redock_sel:
+                    st.markdown(f'<div style="margin-bottom:6px">{_pill("⭐ Co-crystal reference ligand", "warn")}</div>',
+                                unsafe_allow_html=True)
+                    # Show current confirmed ref status
+                    if confirmed_ref_score is not None:
+                        st.markdown(
+                            f'<div style="background:#23863622;border:1px solid #238636;border-radius:8px;'
+                            f'padding:10px 16px;margin-bottom:10px;font-family:\'IBM Plex Mono\',monospace;">'
+                            f'<span style="color:#3fb950;font-size:0.85rem;">✅ Reference locked:</span> '
+                            f'<b style="color:#3fb950">{confirmed_ref_score:.2f} kcal/mol</b>'
+                            f'<span style="color:#8b949e;font-size:0.8rem;"> — pose {confirmed_ref_pose} of {confirmed_ref_name}</span>'
+                            f'</div>',
+                            unsafe_allow_html=True)
+
+                st.markdown(row_pills, unsafe_allow_html=True)
+
                 cbv, cbd = st.columns([3, 1])
                 with cbv:
                     try:
@@ -1244,7 +1293,43 @@ with tab_batch:
                         vb.zoomTo(); show3d(vb, height=420)
                     except Exception as e:
                         st.info(f"Viewer error: {e}")
+
                 with cbd:
+                    st.markdown("**Actions**")
+
+                    # ── Confirm reference button (co-crystal only) ─────────────
+                    if is_redock_sel and this_pose_score is not None:
+                        already_confirmed = (
+                            confirmed_ref_score == this_pose_score
+                            and confirmed_ref_pose == b_pose_i + 1
+                        )
+                        btn_label = (
+                            f"✅ Confirmed (pose {b_pose_i+1})"
+                            if already_confirmed
+                            else f"📌 Use pose {b_pose_i+1} as reference"
+                        )
+                        if st.button(
+                            btn_label,
+                            key="b_confirm_ref_btn",
+                            type="primary" if not already_confirmed else "secondary",
+                            use_container_width=True,
+                        ):
+                            st.session_state["b_confirmed_ref_score"] = this_pose_score
+                            st.session_state["b_confirmed_ref_pose"]  = b_pose_i + 1
+                            st.session_state["b_confirmed_ref_name"]  = sel_nm
+                            st.rerun()
+
+                        if confirmed_ref_score is not None and not already_confirmed:
+                            if st.button(
+                                "🔄 Reset reference",
+                                key="b_reset_ref_btn",
+                                use_container_width=True,
+                            ):
+                                st.session_state["b_confirmed_ref_score"] = None
+                                st.session_state["b_confirmed_ref_pose"]  = None
+                                st.session_state["b_confirmed_ref_name"]  = None
+                                st.rerun()
+
                     st.markdown("**Download**")
                     safe_sel_nm = sel_nm.replace("⭐ ", "").replace(" (co-crystal ref)", "")
                     sp3 = str(BATCH_WORKDIR / f"{safe_sel_nm}_pose{b_pose_i+1}.sdf")
