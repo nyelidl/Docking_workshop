@@ -321,9 +321,7 @@ def _receptor_section(pfx: str, wdir: Path, step_label: str):
     done     = st.session_state.get(pfx + "receptor_done", False)
     card_cls = "step-card done" if done else "step-card"
 
-    st.markdown(f'<div class="{card_cls}">', unsafe_allow_html=True)
-    st.markdown(f'<div class="step-title">{step_label}</div>', unsafe_allow_html=True)
-    st.markdown('<div class="step-heading" style="color:#6b7280;">📦 Receptor Preparation</div>', unsafe_allow_html=True)
+    st.markdown(f'<div class="{card_cls}"><div class="step-title">{step_label}</div><div class="step-heading" style="color:#6b7280;">📦 Receptor Preparation</div>', unsafe_allow_html=True)
 
     col_a, col_b = st.columns([1.2, 1])
     with col_a:
@@ -541,9 +539,7 @@ with tab_basic:
 
     # ── Step 2: Ligand ────────────────────────────────────────────────────────
     card_cls = "step-card done" if st.session_state.ligand_done else "step-card"
-    st.markdown(f'<div class="{card_cls}">', unsafe_allow_html=True)
-    st.markdown('<div class="step-title">Step 2 of 4</div>', unsafe_allow_html=True)
-    st.markdown('<div class="step-heading" style="color:#6b7280;">⚗️ Ligand Preparation</div>', unsafe_allow_html=True)
+    st.markdown(f'<div class="{card_cls}"><div class="step-title">Step 2 of 4</div><div class="step-heading" style="color:#6b7280;">⚗️ Ligand Preparation</div>', unsafe_allow_html=True)
 
     cl1, cl2 = st.columns([1.5, 1])
     with cl1:
@@ -655,9 +651,7 @@ with tab_basic:
 
     # ── Step 3: Docking ───────────────────────────────────────────────────────
     card_cls = "step-card done" if st.session_state.docking_done else "step-card"
-    st.markdown(f'<div class="{card_cls}">', unsafe_allow_html=True)
-    st.markdown('<div class="step-title">Step 3 of 4</div>', unsafe_allow_html=True)
-    st.markdown('<div class="step-heading">🚀 Run Docking</div>', unsafe_allow_html=True)
+    st.markdown(f'<div class="{card_cls}"><div class="step-title">Step 3 of 4</div><div class="step-heading">🚀 Run Docking</div>', unsafe_allow_html=True)
 
     cd1, cd2 = st.columns([1.5, 1])
     with cd1:
@@ -742,9 +736,7 @@ with tab_basic:
 
     # ── Step 4: Results ───────────────────────────────────────────────────────
     card_cls = "step-card done" if st.session_state.docking_done else "step-card"
-    st.markdown(f'<div class="{card_cls}">', unsafe_allow_html=True)
-    st.markdown('<div class="step-title">Step 4 of 4</div>', unsafe_allow_html=True)
-    st.markdown('<div class="step-heading">📊 Results & Visualization</div>', unsafe_allow_html=True)
+    st.markdown(f'<div class="{card_cls}"><div class="step-title">Step 4 of 4</div><div class="step-heading">📊 Results & Visualization</div>', unsafe_allow_html=True)
 
     if not st.session_state.docking_done:
         st.info("Complete Step 3 to see results here.")
@@ -875,10 +867,7 @@ with tab_batch:
     b_rec_done   = st.session_state.get("b_receptor_done", False)
     b_batch_done = st.session_state.get("b_batch_done", False)
     card_cls = "step-card done" if b_batch_done else "step-card"
-    st.markdown(f'<div class="{card_cls}">', unsafe_allow_html=True)
-    st.markdown('<div class="step-title">Step B2 of B3</div>', unsafe_allow_html=True)
-    st.markdown('<div class="step-heading">⚗️ Batch Ligand Input & Docking</div>',
-                unsafe_allow_html=True)
+    st.markdown(f'<div class="{card_cls}"><div class="step-title">Step B2 of B3</div><div class="step-heading">⚗️ Batch Ligand Input & Docking</div>', unsafe_allow_html=True)
 
     col_b1, col_b2 = st.columns([1.6, 1])
     with col_b1:
@@ -1102,9 +1091,7 @@ with tab_batch:
     # ── Step B3: Results ──────────────────────────────────────────────────────
     b_batch_done = st.session_state.get("b_batch_done", False)
     card_cls = "step-card done" if b_batch_done else "step-card"
-    st.markdown(f'<div class="{card_cls}">', unsafe_allow_html=True)
-    st.markdown('<div class="step-title">Step B3 of B3</div>', unsafe_allow_html=True)
-    st.markdown('<div class="step-heading">📊 Batch Results</div>', unsafe_allow_html=True)
+    st.markdown(f'<div class="{card_cls}"><div class="step-title">Step B3 of B3</div><div class="step-heading">📊 Batch Results</div>', unsafe_allow_html=True)
 
     if not b_batch_done:
         st.info("Complete Step B2 to see batch results here.")
