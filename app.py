@@ -182,6 +182,10 @@ h2, h3 { font-family: 'IBM Plex Mono', monospace; color: var(--accent2); }
 hr { border-color: var(--border); }
 .step-divider { border: none; border-top: 1px dashed var(--border); margin: 32px 0; }
 
+/* Dark gray for 3D Receptor + Docking Box expander label */
+[data-testid="stExpander"]:has(summary:contains("3D")) summary p,
+.st-expander-3d summary p { color: #6b7280 !important; }
+
 [data-testid="stTabs"] [data-baseweb="tab-list"] {
     background: var(--bg-subtle); border-bottom: 1px solid var(--border); gap: 4px;
 }
@@ -319,7 +323,7 @@ def _receptor_section(pfx: str, wdir: Path, step_label: str):
 
     st.markdown(f'<div class="{card_cls}">', unsafe_allow_html=True)
     st.markdown(f'<div class="step-title">{step_label}</div>', unsafe_allow_html=True)
-    st.markdown('<div class="step-heading">📦 Receptor Preparation</div>', unsafe_allow_html=True)
+    st.markdown('<div class="step-heading" style="color:#6b7280;">📦 Receptor Preparation</div>', unsafe_allow_html=True)
 
     col_a, col_b = st.columns([1.2, 1])
     with col_a:
@@ -472,6 +476,12 @@ def _receptor_section(pfx: str, wdir: Path, step_label: str):
                 f'<div class="log-box">{st.session_state.get(pfx+"receptor_log","")}</div>',
                 unsafe_allow_html=True)
         with st.expander("🔭 3D: Receptor + Docking Box", expanded=True):
+            st.markdown("""<script>
+            (function(){
+                var els = window.parent.document.querySelectorAll('[data-testid="stExpander"] summary p');
+                els.forEach(function(el){ if(el.innerText.includes('3D: Receptor')) el.style.color='#6b7280'; });
+            })();
+            </script>""", unsafe_allow_html=True)
             v3 = py3Dmol.view(width="100%", height=480)
             v3.setBackgroundColor("#0d1117" if _chart_colors()["bg"] == "#0d1117" else "#FFFFFF")
             mi = 0
@@ -533,7 +543,7 @@ with tab_basic:
     card_cls = "step-card done" if st.session_state.ligand_done else "step-card"
     st.markdown(f'<div class="{card_cls}">', unsafe_allow_html=True)
     st.markdown('<div class="step-title">Step 2 of 4</div>', unsafe_allow_html=True)
-    st.markdown('<div class="step-heading">⚗️ Ligand Preparation</div>', unsafe_allow_html=True)
+    st.markdown('<div class="step-heading" style="color:#6b7280;">⚗️ Ligand Preparation</div>', unsafe_allow_html=True)
 
     cl1, cl2 = st.columns([1.5, 1])
     with cl1:
