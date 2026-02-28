@@ -25,7 +25,20 @@ st.set_page_config(
 import streamlit.components.v1 as _comps
 
 def _chart_colors():
-    """Always returns light-theme colors."""
+    """Return chart colors matching Streamlit's active theme (light or dark)."""
+    try:
+        dark = st.get_option("theme.base") == "dark"
+    except Exception:
+        dark = False
+    if dark:
+        return {
+            "bg":        "#0d1117",
+            "bg_sub":    "#161b22",
+            "border":    "#30363d",
+            "text":      "#c9d1d9",
+            "muted":     "#8b949e",
+            "legend_bg": "#21262d",
+        }
     return {
         "bg":        "#FFFFFF",
         "bg_sub":    "#F6F8FA",
@@ -35,7 +48,14 @@ def _chart_colors():
         "legend_bg": "#F6F8FA",
     }
 
-# ─── Global CSS (Light theme — forced) ───────────────────────────────────────
+def _viewer_bg():
+    """Return py3Dmol background color matching active theme."""
+    try:
+        return "#0d1117" if st.get_option("theme.base") == "dark" else "#FFFFFF"
+    except Exception:
+        return "#FFFFFF"
+
+# ─── Global CSS (Auto light/dark theme) ─────────────────────────────────────
 st.markdown("""
 <style>
 @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans:wght@300;400;600&display=swap');
@@ -63,6 +83,33 @@ st.markdown("""
     --wn-bg:       #FFF8C5;
     --wn-border:   #9A6700;
     --btn-sec-bg:  #F6F8FA;
+}
+
+@media (prefers-color-scheme: dark) {
+    :root {
+        --bg:          #0d1117;
+        --bg-subtle:   #161b22;
+        --bg-card:     #161b22;
+        --bg-input:    #21262d;
+        --border:      #30363d;
+        --text:        #c9d1d9;
+        --text-muted:  #8b949e;
+        --accent:      #58a6ff;
+        --accent2:     #79c0ff;
+        --success:     #3fb950;
+        --warn:        #d29922;
+        --text-card-title:   #8b949e;
+        --text-card-heading: #e6edf3;
+        --text-input:        #c9d1d9;
+        --border-input:      #30363d;
+        --pill-border: #1f6feb;
+        --pill-text:   #79c0ff;
+        --ok-bg:       #23863622;
+        --ok-border:   #238636;
+        --wn-bg:       #9e680322;
+        --wn-border:   #9e6803;
+        --btn-sec-bg:  #21262d;
+    }
 }
 
 html, body, [data-testid="stAppViewContainer"] {
@@ -328,7 +375,7 @@ def _receptor_section(pfx: str, wdir: Path, step_label: str):
     done     = st.session_state.get(pfx + "receptor_done", False)
     card_cls = "step-card done" if done else "step-card"
 
-    st.markdown(f'<div class="{card_cls}"><div class="step-title">{step_label}</div><div class="step-heading" style="color:#FFFFFF;">📦 Receptor Preparation</div>', unsafe_allow_html=True)
+    st.markdown(f'<div class="{card_cls}"><div class="step-title">{step_label}</div><div class="step-heading" style="color:var(--text-card-heading);">📦 Receptor Preparation</div>', unsafe_allow_html=True)
 
     col_a, col_b = st.columns([1.2, 1])
     with col_a:
@@ -488,7 +535,7 @@ def _receptor_section(pfx: str, wdir: Path, step_label: str):
             })();
             </script>""", unsafe_allow_html=True)
             v3 = py3Dmol.view(width="100%", height=480)
-            v3.setBackgroundColor("#FFFFFF")
+            v3.setBackgroundColor(_viewer_bg())
             mi = 0
             for path, style in [
                 (st.session_state.get(pfx+"receptor_fh"),
@@ -546,7 +593,7 @@ with tab_basic:
 
     # ── Step 2: Ligand ────────────────────────────────────────────────────────
     card_cls = "step-card done" if st.session_state.ligand_done else "step-card"
-    st.markdown(f'<div class="{card_cls}"><div class="step-title">Step 2 of 4</div><div class="step-heading" style="color:#FFFFFF;">⚗️ Ligand Preparation</div>', unsafe_allow_html=True)
+    st.markdown(f'<div class="{card_cls}"><div class="step-title">Step 2 of 4</div><div class="step-heading" style="color:var(--text-card-heading);">⚗️ Ligand Preparation</div>', unsafe_allow_html=True)
 
     cl1, cl2 = st.columns([1.5, 1])
     with cl1:
@@ -646,7 +693,7 @@ with tab_basic:
             st.markdown("**3D Conformer**")
             try:
                 vl = py3Dmol.view(width="100%", height=280)
-                vl.setBackgroundColor("#FFFFFF")
+                vl.setBackgroundColor(_viewer_bg())
                 vl.addModel(open(st.session_state.ligand_sdf).read(), "sdf")
                 vl.setStyle({}, {"stick": {"colorscheme": "yellowCarbon", "radius": 0.2}})
                 vl.zoomTo(); show3d(vl, height=280)
@@ -788,7 +835,7 @@ with tab_basic:
         anim_spd = st.slider("Interval (ms)", 500, 3000, 1500, 250, key="anim_spd")
         if st.session_state.output_sdf and os.path.exists(st.session_state.output_sdf):
             sdf_txt = open(st.session_state.output_sdf).read()
-            va = py3Dmol.view(width="100%", height=440); va.setBackgroundColor("#FFFFFF")
+            va = py3Dmol.view(width="100%", height=440); va.setBackgroundColor(_viewer_bg())
             mai = 0
             if st.session_state.receptor_fh and os.path.exists(st.session_state.receptor_fh):
                 va.addModel(open(st.session_state.receptor_fh).read(), "pdb")
@@ -823,7 +870,7 @@ with tab_basic:
             cpv, cdl = st.columns([3, 1])
             with cpv:
                 try:
-                    v2 = py3Dmol.view(width="100%", height=400); v2.setBackgroundColor("#FFFFFF")
+                    v2 = py3Dmol.view(width="100%", height=400); v2.setBackgroundColor(_viewer_bg())
                     mi2 = 0
                     if st.session_state.receptor_fh and os.path.exists(st.session_state.receptor_fh):
                         v2.addModel(open(st.session_state.receptor_fh).read(), "pdb")
@@ -1308,7 +1355,7 @@ with tab_batch:
                 with cbv:
                     try:
                         vb = py3Dmol.view(width="100%", height=420)
-                        vb.setBackgroundColor("#FFFFFF"); bmi = 0
+                        vb.setBackgroundColor(_viewer_bg()); bmi = 0
                         rec_fh = st.session_state.get("b_receptor_fh")
                         if rec_fh and os.path.exists(rec_fh):
                             vb.addModel(open(rec_fh).read(), "pdb")
