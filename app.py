@@ -887,7 +887,7 @@ with tab_batch:
                        "C1=CC=C(C=C1)C2=CC(=O)C3=C(O2)C=C(C(=C3O)OC)O Galangin\n"
                        "CC1=C(C=C(C=C1)NC2=NC=NC3=C2C=CC=C3)OC Imatinib"
                       ),
-                height=200, key="b_smiles_text")
+                height=300, key="b_smiles_text")
         elif b_input_mode == "Upload .smi file":
             st.file_uploader("Upload .smi file", type=["smi", "txt"], key="b_smi_file")
         else:
