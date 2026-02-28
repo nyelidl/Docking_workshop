@@ -489,7 +489,7 @@ def _receptor_section(pfx: str, wdir: Path, step_label: str):
                 (st.session_state.get(pfx+"receptor_fh"),
                  {"cartoon": {"color": "spectrum", "opacity": 0.65}}),
                 (st.session_state.get(pfx+"box_pdb"),
-                 {"line": {"color": "gray": 0.65}}),
+                 {"line": {"color": "gray", "linewidth": 0.65}}),
             ]:
                 if path and os.path.exists(path):
                     v3.addModel(open(path).read(), "pdb")
