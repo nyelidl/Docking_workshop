@@ -20,102 +20,179 @@ st.set_page_config(
     initial_sidebar_state="collapsed",
 )
 
-# ─── Global CSS ───────────────────────────────────────────────────────────────
+
+# ─── Theme Helper ─────────────────────────────────────────────────────────────
+import streamlit.components.v1 as _comps
+def _is_dark():
+    """Detect system dark mode via JS injection (best effort)."""
+    # We use a CSS variable trick; fallback is to rely purely on CSS prefers-color-scheme
+    return False  # Charts will use matplotlib's own style
+
+def _chart_colors():
+    """Return chart color dict based on Streamlit's active theme."""
+    theme = st.get_option("theme.base") if hasattr(st, "get_option") else "light"
+    import os
+    # Try reading from streamlit config
+    dark = (theme == "dark")
+    return {
+        "bg":       "#0d1117" if dark else "#FFFFFF",
+        "bg_sub":   "#161b22" if dark else "#F6F8FA",
+        "border":   "#30363d" if dark else "#D0D7DE",
+        "text":     "#c9d1d9" if dark else "#24292F",
+        "muted":    "#8b949e" if dark else "#57606A",
+        "legend_bg":"#21262d" if dark else "#F6F8FA",
+    }
+
+# ─── Global CSS (System-aware: auto light/dark) ───────────────────────────────
 st.markdown("""
 <style>
 @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans:wght@300;400;600&display=swap');
 
+/* ── CSS Variables: Light mode (default) ── */
+:root {
+    --bg:          #FFFFFF;
+    --bg-subtle:   #F6F8FA;
+    --bg-card:     #3a3f47;
+    --bg-input:    #2d3139;
+    --border:      #D0D7DE;
+    --text:        #24292F;
+    --text-muted:  #57606A;
+    --accent:      #0969DA;
+    --accent2:     #0550AE;
+    --success:     #1A7F37;
+    --warn:        #9A6700;
+    --text-card-title: #9ca3af;
+    --text-card-heading: #e5e7eb;
+    --text-input: #e5e7eb;
+    --border-input: #4b5563;
+    --pill-border: #54AEFF;
+    --pill-text:   #0550AE;
+    --ok-bg:       #DAFBE1;
+    --ok-border:   #1A7F37;
+    --wn-bg:       #FFF8C5;
+    --wn-border:   #9A6700;
+    --btn-sec-bg:  #F6F8FA;
+}
+
+/* ── CSS Variables: Dark mode (follows system) ── */
+@media (prefers-color-scheme: dark) {
+    :root {
+        --bg:          #0d1117;
+        --bg-subtle:   #161b22;
+        --bg-card:     #161b22;
+        --bg-input:    #21262d;
+        --border:      #30363d;
+        --text:        #c9d1d9;
+        --text-muted:  #8b949e;
+        --accent:      #58a6ff;
+        --accent2:     #79c0ff;
+        --success:     #3fb950;
+        --warn:        #d29922;
+        --text-card-title: #8b949e;
+        --text-card-heading: #e6edf3;
+        --text-input: #c9d1d9;
+        --border-input: #30363d;
+        --pill-border: #1f6feb;
+        --pill-text:   #79c0ff;
+        --ok-bg:       #23863622;
+        --ok-border:   #238636;
+        --wn-bg:       #9e680322;
+        --wn-border:   #9e6803;
+        --btn-sec-bg:  #21262d;
+    }
+}
+
 html, body, [data-testid="stAppViewContainer"] {
-    background-color: #FFFFFF;
-    color: #24292F;
+    background-color: var(--bg) !important;
+    color: var(--text);
     font-family: 'IBM Plex Sans', sans-serif;
 }
-[data-testid="stSidebar"] { background: #F6F8FA; }
-[data-testid="stHeader"]  { background: transparent; }
+[data-testid="stSidebar"] { background: var(--bg-subtle) !important; }
+[data-testid="stHeader"]  { background: transparent !important; }
 
-h1 { font-family: 'IBM Plex Mono', monospace; color: #0969DA; letter-spacing: -1px; }
-h2, h3 { font-family: 'IBM Plex Mono', monospace; color: #79c0ff; }
+h1 { font-family: 'IBM Plex Mono', monospace; color: var(--accent); letter-spacing: -1px; }
+h2, h3 { font-family: 'IBM Plex Mono', monospace; color: var(--accent2); }
 
 .step-card {
-    background: #F6F8FA;
-    border: 1px solid #30363d;
-    border-left: 4px solid #0969DA;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-left: 4px solid var(--accent);
     border-radius: 8px;
     padding: 20px 24px;
     margin-bottom: 24px;
 }
-.step-card.done    { border-left-color: #3fb950; }
-.step-card.running { border-left-color: #d29922; }
+.step-card.done    { border-left-color: var(--success); }
+.step-card.running { border-left-color: var(--warn); }
 
 .step-title {
     font-family: 'IBM Plex Mono', monospace;
-    font-size: 0.85rem; color: #8b949e;
+    font-size: 0.85rem; color: var(--text-card-title);
     text-transform: uppercase; letter-spacing: 2px; margin-bottom: 4px;
 }
 .step-heading {
     font-family: 'IBM Plex Mono', monospace;
-    font-size: 1.3rem; color: #e6edf3; margin-bottom: 16px;
+    font-size: 1.3rem; color: var(--text-card-heading); margin-bottom: 16px;
 }
 .result-pill {
     display: inline-block;
-    background: #1f6feb22; border: 1px solid #1f6feb; color: #79c0ff;
+    background: var(--pill-bg); border: 1px solid var(--pill-border); color: var(--pill-text);
     border-radius: 20px; padding: 2px 12px;
     font-family: 'IBM Plex Mono', monospace; font-size: 0.8rem; margin: 2px;
 }
 .success-pill {
     display: inline-block;
-    background: #23863622; border: 1px solid #238636; color: #3fb950;
+    background: var(--ok-bg); border: 1px solid var(--ok-border); color: var(--success);
     border-radius: 20px; padding: 4px 14px;
     font-family: 'IBM Plex Mono', monospace; font-size: 0.85rem;
 }
 .warn-pill {
     display: inline-block;
-    background: #9e680322; border: 1px solid #9e6803; color: #d29922;
+    background: var(--wn-bg); border: 1px solid var(--wn-border); color: var(--warn);
     border-radius: 20px; padding: 4px 14px;
     font-family: 'IBM Plex Mono', monospace; font-size: 0.85rem;
 }
 .log-box {
-    background: #FFFFFF; border: 1px solid #30363d; border-radius: 6px;
+    background: var(--bg-subtle); border: 1px solid var(--border); border-radius: 6px;
     padding: 12px 16px;
-    font-family: 'IBM Plex Mono', monospace; font-size: 0.78rem; color: #8b949e;
+    font-family: 'IBM Plex Mono', monospace; font-size: 0.78rem; color: var(--text-muted);
     max-height: 220px; overflow-y: auto; white-space: pre-wrap;
 }
-.score-best { font-family: 'IBM Plex Mono', monospace; font-size: 2.4rem; color: #3fb950; font-weight: 600; }
-.score-unit { font-size: 1rem; color: #8b949e; }
+.score-best { font-family: 'IBM Plex Mono', monospace; font-size: 2.4rem; color: var(--success); font-weight: 600; }
+.score-unit { font-size: 1rem; color: var(--text-muted); }
 
 .stButton > button {
-    background: #238636; color: white; border: none; border-radius: 6px;
+    background: var(--success); color: white; border: none; border-radius: 6px;
     font-family: 'IBM Plex Mono', monospace; font-size: 0.88rem;
     padding: 8px 20px; transition: background 0.2s;
 }
-.stButton > button:hover { background: #2ea043; }
-.stButton > button[kind="secondary"] { background: #21262d; border: 1px solid #30363d; }
-.stButton > button[kind="secondary"]:hover { background: #30363d; }
+.stButton > button:hover { filter: brightness(1.15); }
+.stButton > button[kind="secondary"] { background: var(--btn-sec-bg); border: 1px solid var(--border); color: var(--text); }
+.stButton > button[kind="secondary"]:hover { filter: brightness(0.95); }
 
 .stTextInput > div > div > input,
 .stSelectbox > div > div,
 .stNumberInput > div > div > input {
-    background: #21262d !important; border: 1px solid #30363d !important;
-    color: #24292F !important; border-radius: 6px !important;
+    background: var(--bg-input) !important; border: 1px solid var(--border-input) !important;
+    color: var(--text-input) !important; border-radius: 6px !important;
     font-family: 'IBM Plex Mono', monospace !important;
 }
-.stSlider > div { color: #24292F; }
-[data-baseweb="slider"] { accent-color: #0969DA; }
-.stDataFrame { border: 1px solid #30363d; border-radius: 6px; }
-hr { border-color: #30363d; }
-.step-divider { border: none; border-top: 1px dashed #30363d; margin: 32px 0; }
+.stSlider > div { color: var(--text); }
+[data-baseweb="slider"] { accent-color: var(--accent); }
+.stDataFrame { border: 1px solid var(--border); border-radius: 6px; }
+hr { border-color: var(--border); }
+.step-divider { border: none; border-top: 1px dashed var(--border); margin: 32px 0; }
 
 [data-testid="stTabs"] [data-baseweb="tab-list"] {
-    background: #F6F8FA; border-bottom: 1px solid #30363d; gap: 4px;
+    background: var(--bg-subtle); border-bottom: 1px solid var(--border); gap: 4px;
 }
 [data-testid="stTabs"] [data-baseweb="tab"] {
     font-family: 'IBM Plex Mono', monospace; font-size: 0.9rem;
-    color: #8b949e; background: transparent; border-radius: 6px 6px 0 0;
+    color: var(--text-muted); background: transparent; border-radius: 6px 6px 0 0;
     padding: 10px 20px;
 }
 [data-testid="stTabs"] [aria-selected="true"] {
-    color: #0969DA !important; background: #FFFFFF !important;
-    border-bottom: 2px solid #0969DA !important;
+    color: var(--accent) !important; background: var(--bg) !important;
+    border-bottom: 2px solid var(--accent) !important;
 }
 </style>
 """, unsafe_allow_html=True)
@@ -396,7 +473,7 @@ def _receptor_section(pfx: str, wdir: Path, step_label: str):
                 unsafe_allow_html=True)
         with st.expander("🔭 3D: Receptor + Docking Box", expanded=True):
             v3 = py3Dmol.view(width="100%", height=480)
-            v3.setBackgroundColor("#FFFFFF")
+            v3.setBackgroundColor("#0d1117" if _chart_colors()["bg"] == "#0d1117" else "#FFFFFF")
             mi = 0
             for path, style in [
                 (st.session_state.get(pfx+"receptor_fh"),
@@ -477,7 +554,7 @@ with tab_basic:
                     f'<div style="background:#1f6feb15;border:1px solid #1f6feb;'
                     f'border-radius:8px;padding:16px;">'
                     f'<div style="font-family:\'IBM Plex Mono\',monospace;font-size:1.8rem;'
-                    f'color:#0969DA">pKa = {pka_v:.2f}</div>'
+                    f'color:#58a6ff">pKa = {pka_v:.2f}</div>'
                     f'<div style="color:#8b949e;font-size:0.85rem">at pH {ph_in:.1f}: '
                     f'likely <b style="color:#79c0ff">{charged}</b></div>'
                     f'</div>', unsafe_allow_html=True)
@@ -556,7 +633,7 @@ with tab_basic:
             st.markdown("**3D Conformer**")
             try:
                 vl = py3Dmol.view(width="100%", height=280)
-                vl.setBackgroundColor("#FFFFFF")
+                vl.setBackgroundColor("#0d1117" if _chart_colors()["bg"] == "#0d1117" else "#FFFFFF")
                 vl.addModel(open(st.session_state.ligand_sdf).read(), "sdf")
                 vl.setStyle({}, {"stick": {"colorscheme": "yellowCarbon", "radius": 0.2}})
                 vl.zoomTo(); show3d(vl, height=280)
@@ -580,7 +657,7 @@ with tab_basic:
     with cd2:
         est = max(1, exh // 8)
         st.markdown(
-            f'<div style="background:#21262d;border:1px solid #30363d;'
+            f'<div style="background:#F6F8FA;border:1px solid #D0D7DE;'
             f'border-radius:8px;padding:16px;">'
             f'<div style="color:#8b949e;font-size:0.8rem">ESTIMATED TIME</div>'
             f'<div style="font-family:\'IBM Plex Mono\',monospace;font-size:2rem;color:#d29922">'
@@ -681,16 +758,17 @@ with tab_basic:
             st.markdown("**Affinity by Pose**")
             if df is not None:
                 fig, ax = plt.subplots(figsize=(6, 3.5))
-                fig.patch.set_facecolor("#F6F8FA"); ax.set_facecolor("#FFFFFF")
-                cols = ["#3fb950" if v == df["Affinity (kcal/mol)"].min() else "#0969DA"
+                _cc = _chart_colors()
+                fig.patch.set_facecolor(_cc["bg"]); ax.set_facecolor(_cc["bg_sub"])
+                cols = ["#3fb950" if v == df["Affinity (kcal/mol)"].min() else "#58a6ff"
                         for v in df["Affinity (kcal/mol)"]]
                 ax.bar(df["Pose"].astype(str), df["Affinity (kcal/mol)"],
-                       color=cols, edgecolor="#30363d", linewidth=0.6)
+                       color=cols, edgecolor=_cc["border"], linewidth=0.6)
                 ax.invert_yaxis()
-                ax.set_xlabel("Pose", color="#8b949e", fontsize=9)
-                ax.set_ylabel("Affinity (kcal/mol)", color="#8b949e", fontsize=9)
-                ax.tick_params(colors="#8b949e", labelsize=8)
-                for sp in ax.spines.values(): sp.set_edgecolor("#30363d")
+                ax.set_xlabel("Pose", color=_cc["muted"], fontsize=9)
+                ax.set_ylabel("Affinity (kcal/mol)", color=_cc["muted"], fontsize=9)
+                ax.tick_params(colors=_cc["muted"], labelsize=8)
+                for sp in ax.spines.values(): sp.set_edgecolor(_cc["border"])
                 fig.tight_layout()
                 st.pyplot(fig, use_container_width=True); plt.close(fig)
 
@@ -701,12 +779,12 @@ with tab_basic:
         anim_spd = st.slider("Interval (ms)", 500, 3000, 1500, 250, key="anim_spd")
         if st.session_state.output_sdf and os.path.exists(st.session_state.output_sdf):
             sdf_txt = open(st.session_state.output_sdf).read()
-            va = py3Dmol.view(width="100%", height=440); va.setBackgroundColor("#FFFFFF")
+            va = py3Dmol.view(width="100%", height=440); va.setBackgroundColor("#0d1117" if _chart_colors()["bg"] == "#0d1117" else "#FFFFFF")
             mai = 0
             if st.session_state.receptor_fh and os.path.exists(st.session_state.receptor_fh):
                 va.addModel(open(st.session_state.receptor_fh).read(), "pdb")
                 va.setStyle({"model": mai},
-                             {"cartoon": {"color": "spectrum", "opacity": 0.55},
+                             {"cartoon": {"color": "spectrum", "opacity": 0.7},
                               "stick":   {"radius": 0.1, "opacity": 0.2}}); mai += 1
             if st.session_state.ligand_pdb_path and os.path.exists(st.session_state.ligand_pdb_path):
                 va.addModel(open(st.session_state.ligand_pdb_path).read(), "pdb")
@@ -736,7 +814,7 @@ with tab_basic:
             cpv, cdl = st.columns([3, 1])
             with cpv:
                 try:
-                    v2 = py3Dmol.view(width="100%", height=400); v2.setBackgroundColor("#FFFFFF")
+                    v2 = py3Dmol.view(width="100%", height=400); v2.setBackgroundColor("#0d1117" if _chart_colors()["bg"] == "#0d1117" else "#FFFFFF")
                     mi2 = 0
                     if st.session_state.receptor_fh and os.path.exists(st.session_state.receptor_fh):
                         v2.addModel(open(st.session_state.receptor_fh).read(), "pdb")
@@ -1056,26 +1134,27 @@ with tab_batch:
             st.markdown("**Top Score per Ligand**")
             if not ok_df.empty:
                 fig, ax = plt.subplots(figsize=(max(5, len(ok_df)*0.6 + 1.5), 4))
-                fig.patch.set_facecolor("#F6F8FA"); ax.set_facecolor("#FFFFFF")
+                _cc = _chart_colors()
+                fig.patch.set_facecolor(_cc["bg"]); ax.set_facecolor(_cc["bg_sub"])
                 scores = ok_df["Top Score (kcal/mol)"].values
                 names  = ok_df["Name"].values
                 best_i = int(np.argmin(scores))
-                colors = ["#3fb950" if i == best_i else "#0969DA" for i in range(len(scores))]
+                colors = ["#3fb950" if i == best_i else "#58a6ff" for i in range(len(scores))]
                 ax.scatter(names, scores, color=colors, s=90, zorder=3,
-                           edgecolors="#30363d", linewidths=0.5)
-                ax.plot(names, scores, color="#30363d", linewidth=0.8, zorder=2)
+                           edgecolors=_cc["border"], linewidths=0.5)
+                ax.plot(names, scores, color=_cc["border"], linewidth=0.8, zorder=2)
                 if redock_score is not None:
                     ax.axhline(redock_score, color="#f85149", linewidth=1.5,
                                linestyle="--", label=f"Co-crystal ref: {redock_score:.2f}")
-                    ax.legend(facecolor="#21262d", edgecolor="#30363d",
-                              labelcolor="#24292F", fontsize=8)
+                    ax.legend(facecolor=_cc["legend_bg"], edgecolor=_cc["border"],
+                              labelcolor=_cc["text"], fontsize=8)
                 ax.invert_yaxis()
-                ax.set_ylabel("Vina score (kcal/mol)", color="#8b949e", fontsize=9)
-                ax.set_xlabel("Ligand", color="#8b949e", fontsize=9)
-                ax.tick_params(colors="#8b949e", labelsize=7)
+                ax.set_ylabel("Vina score (kcal/mol)", color=_cc["muted"], fontsize=9)
+                ax.set_xlabel("Ligand", color=_cc["muted"], fontsize=9)
+                ax.tick_params(colors=_cc["muted"], labelsize=7)
                 plt.xticks(rotation=40, ha="right")
-                for sp in ax.spines.values(): sp.set_edgecolor("#30363d")
-                ax.grid(axis="y", color="#21262d", linewidth=0.5)
+                for sp in ax.spines.values(): sp.set_edgecolor(_cc["border"])
+                ax.grid(axis="y", color=_cc["bg_sub"], linewidth=0.5)
                 fig.tight_layout()
                 st.pyplot(fig, use_container_width=True); plt.close(fig)
 
@@ -1102,12 +1181,12 @@ with tab_batch:
                 with cbv:
                     try:
                         vb = py3Dmol.view(width="100%", height=420)
-                        vb.setBackgroundColor("#FFFFFF"); bmi = 0
+                        vb.setBackgroundColor("#0d1117" if _chart_colors()["bg"] == "#0d1117" else "#FFFFFF"); bmi = 0
                         rec_fh = st.session_state.get("b_receptor_fh")
                         if rec_fh and os.path.exists(rec_fh):
                             vb.addModel(open(rec_fh).read(), "pdb")
                             vb.setStyle({"model": bmi},
-                                         {"cartoon": {"color": "spectrum", "opacity": 0.55},
+                                         {"cartoon": {"color": "spectrum", "opacity": 0.7},
                                           "stick":   {"radius": 0.08, "opacity": 0.15}}); bmi += 1
                         lig_p = st.session_state.get("b_ligand_pdb_path")
                         if lig_p and os.path.exists(lig_p):
@@ -1164,12 +1243,12 @@ with tab_batch:
 # ─── Footer ───────────────────────────────────────────────────────────────────
 st.markdown('<hr class="step-divider">', unsafe_allow_html=True)
 st.markdown(
-    '<div style="text-align:center;color:#484f58;font-size:0.78rem;'
+    '<div style="text-align:center;color:#57606A;font-size:0.78rem;'
     'font-family:\'IBM Plex Mono\',monospace;">'
     'AutoDock Vina 1.2.7 · Meeko · RDKit · OpenBabel · py3Dmol<br>'
     'Eberhardt et al. J. Chem. Inf. Model. 2021, 61, 3891–3898 &nbsp;·&nbsp; '
     '<a href="https://pubs.acs.org/doi/10.1021/acs.jcim.5c02852" target="_blank" '
-    'style="color:#0969DA;text-decoration:none;">'
+    'style="color:#58a6ff;text-decoration:none;">'
     'DFDD — Hengphasatporn et al. J. Chem. Inf. Model. 2026</a>'
     '</div>',
     unsafe_allow_html=True,
