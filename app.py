@@ -321,7 +321,7 @@ def _receptor_section(pfx: str, wdir: Path, step_label: str):
     done     = st.session_state.get(pfx + "receptor_done", False)
     card_cls = "step-card done" if done else "step-card"
 
-    st.markdown(f'<div class="{card_cls}"><div class="step-title">{step_label}</div><div class="step-heading" style="color:#6b7280;">📦 Receptor Preparation</div>', unsafe_allow_html=True)
+    st.markdown(f'<div class="{card_cls}"><div class="step-title">{step_label}</div><div class="step-heading" style="color:#FFFFFF;">📦 Receptor Preparation</div>', unsafe_allow_html=True)
 
     col_a, col_b = st.columns([1.2, 1])
     with col_a:
@@ -539,7 +539,7 @@ with tab_basic:
 
     # ── Step 2: Ligand ────────────────────────────────────────────────────────
     card_cls = "step-card done" if st.session_state.ligand_done else "step-card"
-    st.markdown(f'<div class="{card_cls}"><div class="step-title">Step 2 of 4</div><div class="step-heading" style="color:#6b7280;">⚗️ Ligand Preparation</div>', unsafe_allow_html=True)
+    st.markdown(f'<div class="{card_cls}"><div class="step-title">Step 2 of 4</div><div class="step-heading" style="color:#FFFFFF;">⚗️ Ligand Preparation</div>', unsafe_allow_html=True)
 
     cl1, cl2 = st.columns([1.5, 1])
     with cl1:
