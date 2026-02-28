@@ -1151,58 +1151,6 @@ with tab_batch:
             f"{_pill('AutoDock Vina 1.2.7')}"
             + (f" {_pill(f'{n_fail} failed', 'warn')}" if n_fail else ""),
             unsafe_allow_html=True)
-        with st.expander("📋 Full docking log", expanded=False):
-            st.markdown(
-                f'<div class="log-box">{st.session_state.get("b_batch_log","")}</div>',
-                unsafe_allow_html=True)
-
-        # Score table + dot plot
-        df_res = pd.DataFrame([
-            {"Name": r["Name"], "Top Score (kcal/mol)": r["Top Score"],
-             "Poses": r["Poses"], "Status": r["Status"]}
-            for r in results
-        ])
-        ok_df = (df_res[df_res["Status"] == "OK"]
-                 .sort_values("Top Score (kcal/mol)")
-                 .reset_index(drop=True))
-
-        ct2, cp2 = st.columns([1, 1.6])
-        with ct2:
-            st.markdown("**Score Table**")
-            st.dataframe(df_res, hide_index=True, use_container_width=True)
-        with cp2:
-            st.markdown("**Top Score per Ligand**")
-            if not ok_df.empty:
-                fig, ax = plt.subplots(figsize=(max(5, len(ok_df)*0.6 + 1.5), 4))
-                _cc = _chart_colors()
-                fig.patch.set_facecolor(_cc["bg"]); ax.set_facecolor(_cc["bg_sub"])
-                scores = ok_df["Top Score (kcal/mol)"].values
-                names  = ok_df["Name"].values
-                best_i = int(np.argmin(scores))
-                colors = ["#3fb950" if i == best_i else "#58a6ff" for i in range(len(scores))]
-                ax.scatter(names, scores, color=colors, s=90, zorder=3,
-                           edgecolors=_cc["border"], linewidths=0.5)
-                ax.plot(names, scores, color=_cc["border"], linewidth=0.8, zorder=2)
-                if active_ref_score is not None:
-                    ref_label = (
-                        f"✓ Confirmed ref (pose {confirmed_ref_pose}): {active_ref_score:.2f} kcal/mol"
-                        if confirmed_ref_score is not None
-                        else f"Co-crystal ref (top pose): {active_ref_score:.2f} kcal/mol"
-                    )
-                    ax.axhline(active_ref_score, color="#f85149", linewidth=1.8,
-                               linestyle="--", label=ref_label)
-                    ax.legend(facecolor=_cc["legend_bg"], edgecolor=_cc["border"],
-                              labelcolor=_cc["text"], fontsize=8)
-                ax.set_ylabel("Vina score (kcal/mol)", color=_cc["muted"], fontsize=9)
-                ax.set_xlabel("Ligand", color=_cc["muted"], fontsize=9)
-                ax.tick_params(colors=_cc["muted"], labelsize=7)
-                plt.xticks(rotation=40, ha="right")
-                for sp in ax.spines.values(): sp.set_edgecolor(_cc["border"])
-                ax.grid(axis="y", color=_cc["bg_sub"], linewidth=0.5)
-                fig.tight_layout()
-                st.pyplot(fig, use_container_width=True); plt.close(fig)
-
-        st.markdown("---")
 
         # ── Pose Browser ──────────────────────────────────────────────────────
         st.markdown("**🔎 Pose Browser**")
@@ -1340,6 +1288,60 @@ with tab_batch:
                         st.download_button("⬇ All poses (.pdbqt)",
                             open(sel_res["out_pdbqt"], "rb"),
                             file_name=f"{safe_sel_nm}_out.pdbqt", key="b_dl_pdbqt")
+
+        st.markdown("---")
+
+        # ── Full docking log + Score Table + Plot ─────────────────────────────
+        with st.expander("📋 Full docking log", expanded=False):
+            st.markdown(
+                f'<div class="log-box">{st.session_state.get("b_batch_log","")}</div>',
+                unsafe_allow_html=True)
+
+        # Score table + dot plot
+        df_res = pd.DataFrame([
+            {"Name": r["Name"], "Top Score (kcal/mol)": r["Top Score"],
+             "Poses": r["Poses"], "Status": r["Status"]}
+            for r in results
+        ])
+        ok_df = (df_res[df_res["Status"] == "OK"]
+                 .sort_values("Top Score (kcal/mol)")
+                 .reset_index(drop=True))
+
+        ct2, cp2 = st.columns([1, 1.6])
+        with ct2:
+            st.markdown("**Score Table**")
+            st.dataframe(df_res, hide_index=True, use_container_width=True)
+        with cp2:
+            st.markdown("**Top Score per Ligand**")
+            if not ok_df.empty:
+                fig, ax = plt.subplots(figsize=(max(5, len(ok_df)*0.6 + 1.5), 4))
+                _cc = _chart_colors()
+                fig.patch.set_facecolor(_cc["bg"]); ax.set_facecolor(_cc["bg_sub"])
+                scores = ok_df["Top Score (kcal/mol)"].values
+                names  = ok_df["Name"].values
+                best_i = int(np.argmin(scores))
+                colors = ["#3fb950" if i == best_i else "#58a6ff" for i in range(len(scores))]
+                ax.scatter(names, scores, color=colors, s=90, zorder=3,
+                           edgecolors=_cc["border"], linewidths=0.5)
+                ax.plot(names, scores, color=_cc["border"], linewidth=0.8, zorder=2)
+                if active_ref_score is not None:
+                    ref_label = (
+                        f"✓ Confirmed ref (pose {confirmed_ref_pose}): {active_ref_score:.2f} kcal/mol"
+                        if confirmed_ref_score is not None
+                        else f"Co-crystal ref (top pose): {active_ref_score:.2f} kcal/mol"
+                    )
+                    ax.axhline(active_ref_score, color="#f85149", linewidth=1.8,
+                               linestyle="--", label=ref_label)
+                    ax.legend(facecolor=_cc["legend_bg"], edgecolor=_cc["border"],
+                              labelcolor=_cc["text"], fontsize=8)
+                ax.set_ylabel("Vina score (kcal/mol)", color=_cc["muted"], fontsize=9)
+                ax.set_xlabel("Ligand", color=_cc["muted"], fontsize=9)
+                ax.tick_params(colors=_cc["muted"], labelsize=7)
+                plt.xticks(rotation=40, ha="right")
+                for sp in ax.spines.values(): sp.set_edgecolor(_cc["border"])
+                ax.grid(axis="y", color=_cc["bg_sub"], linewidth=0.5)
+                fig.tight_layout()
+                st.pyplot(fig, use_container_width=True); plt.close(fig)
 
         st.markdown("---")
 
