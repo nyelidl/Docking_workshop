@@ -220,7 +220,7 @@ _DEFAULTS = dict(
     b_ligand_pdb_path=None, b_receptor_done=False, b_receptor_log="",
     # Batch — results
     b_batch_done=False, b_batch_results=None, b_batch_log="",
-    b_redock_score=None,
+    b_redock_score=None, b_redock_result=None,
 )
 for k, v in _DEFAULTS.items():
     if k not in st.session_state:
@@ -1033,7 +1033,8 @@ with tab_batch:
             return out_pdbqt, out_sdf, log, top
 
         # ── Redocking ──────────────────────────────────────────────────────
-        redock_score = None
+        redock_score  = None
+        redock_result = None
         if st.session_state.get("b_do_redock", False):
             raw_rd = st.session_state.get("b_redock_smiles", "").strip()
             pts    = raw_rd.split(None, 1)
@@ -1042,9 +1043,26 @@ with tab_batch:
             with st.spinner(f"Docking reference ligand ({rd_nm})…"):
                 rd_pdbqt, rd_err = _prep_one(rd_smi, "redock_" + rd_nm, b_ph_val, BATCH_WORKDIR)
                 if rd_pdbqt:
-                    _, _, _, rd_top = _dock_one(rd_pdbqt, "redock_" + rd_nm, b_exh, b_nm, b_er)
+                    rd_out_pdbqt, rd_out_sdf, _, rd_top = _dock_one(
+                        rd_pdbqt, "redock_" + rd_nm, b_exh, b_nm, b_er)
                     if rd_top is not None:
                         redock_score = rd_top
+                        # Count poses
+                        rd_n_poses = 0
+                        if rd_out_sdf and os.path.exists(rd_out_sdf):
+                            rd_n_poses = sum(
+                                1 for m in Chem.SDMolSupplier(rd_out_sdf, sanitize=False) if m)
+                        # Store as a browsable result entry (flagged with is_redock=True)
+                        redock_result = {
+                            "Name":      f"⭐ {rd_nm} (co-crystal ref)",
+                            "SMILES":    rd_smi,
+                            "Top Score": rd_top,
+                            "Poses":     rd_n_poses,
+                            "out_pdbqt": rd_out_pdbqt,
+                            "out_sdf":   rd_out_sdf,
+                            "Status":    "OK",
+                            "is_redock": True,
+                        }
                         st.success(f"✓ Reference score: **{redock_score:.2f} kcal/mol** ({rd_nm})")
                     else:
                         st.warning("⚠ Redocking failed — no score returned")
@@ -1087,10 +1105,11 @@ with tab_batch:
         prog.progress(1.0, text=f"✓ Done — {n_ok_final}/{n} ligands docked successfully")
         log_slot.empty()
         st.session_state.update({
-            "b_batch_done": True,
+            "b_batch_done":    True,
             "b_batch_results": results,
-            "b_batch_log": "\n".join(all_logs),
-            "b_redock_score": redock_score,
+            "b_batch_log":     "\n".join(all_logs),
+            "b_redock_score":  redock_score,
+            "b_redock_result": redock_result,
         })
 
     st.markdown('</div>', unsafe_allow_html=True)
@@ -1106,8 +1125,9 @@ with tab_batch:
     else:
         import py3Dmol
         from rdkit import Chem
-        results      = st.session_state.get("b_batch_results", [])
-        redock_score = st.session_state.get("b_redock_score")
+        results       = st.session_state.get("b_batch_results", [])
+        redock_score  = st.session_state.get("b_redock_score")
+        redock_result = st.session_state.get("b_redock_result")
 
         n_ok   = sum(1 for r in results if r["Status"] == "OK")
         n_fail = len(results) - n_ok
@@ -1164,16 +1184,37 @@ with tab_batch:
 
         st.markdown("---")
 
-        # Pose browser
+        # ── Pose Browser ──────────────────────────────────────────────────────
         st.markdown("**🔎 Pose Browser**")
+
+        # Collect all successfully docked batch ligands
         ok_results = [r for r in results
                       if r["Status"] == "OK"
                       and r.get("out_sdf") and os.path.exists(r["out_sdf"])]
-        if ok_results:
-            sel_nm  = st.selectbox("Select ligand", [r["Name"] for r in ok_results],
-                                   key="b_lig_sel")
-            sel_res = next(r for r in ok_results if r["Name"] == sel_nm)
-            b_mols  = [m for m in Chem.SDMolSupplier(sel_res["out_sdf"], sanitize=False) if m]
+
+        # Prepend co-crystal reference at the top of the dropdown (if available)
+        if redock_result and redock_result.get("out_sdf") and os.path.exists(redock_result["out_sdf"]):
+            browsable = [redock_result] + ok_results
+        else:
+            browsable = ok_results
+
+        if browsable:
+            sel_nm = st.selectbox(
+                "Select ligand",
+                [r["Name"] for r in browsable],
+                index=0,          # defaults to co-crystal ref when present
+                key="b_lig_sel",
+            )
+            sel_res = next(r for r in browsable if r["Name"] == sel_nm)
+
+            # Visual badge for the co-crystal reference
+            if sel_res.get("is_redock"):
+                st.markdown(
+                    _pill("⭐ Co-crystal reference ligand", "warn"),
+                    unsafe_allow_html=True,
+                )
+
+            b_mols = [m for m in Chem.SDMolSupplier(sel_res["out_sdf"], sanitize=False) if m]
             if b_mols:
                 b_pose_i = st.slider("Pose", 1, len(b_mols), 1, key="b_pose_sel") - 1
                 top_s    = sel_res["Top Score"]
@@ -1205,13 +1246,15 @@ with tab_batch:
                         st.info(f"Viewer error: {e}")
                 with cbd:
                     st.markdown("**Download**")
-                    sp3 = str(BATCH_WORKDIR / f"{sel_nm}_pose{b_pose_i+1}.sdf")
+                    safe_sel_nm = sel_nm.replace("⭐ ", "").replace(" (co-crystal ref)", "")
+                    sp3 = str(BATCH_WORKDIR / f"{safe_sel_nm}_pose{b_pose_i+1}.sdf")
                     with Chem.SDWriter(sp3) as w: w.write(b_mols[b_pose_i])
                     st.download_button(f"⬇ Pose {b_pose_i+1} (.sdf)", open(sp3, "rb"),
-                        file_name=f"{sel_nm}_pose{b_pose_i+1}.sdf", key="b_dl_pose")
-                    st.download_button("⬇ All poses (.pdbqt)",
-                        open(sel_res["out_pdbqt"], "rb"),
-                        file_name=f"{sel_nm}_out.pdbqt", key="b_dl_pdbqt")
+                        file_name=f"{safe_sel_nm}_pose{b_pose_i+1}.sdf", key="b_dl_pose")
+                    if sel_res.get("out_pdbqt") and os.path.exists(sel_res["out_pdbqt"]):
+                        st.download_button("⬇ All poses (.pdbqt)",
+                            open(sel_res["out_pdbqt"], "rb"),
+                            file_name=f"{safe_sel_nm}_out.pdbqt", key="b_dl_pdbqt")
 
         st.markdown("---")
 
@@ -1225,12 +1268,15 @@ with tab_batch:
                     file_name="batch_scores.csv", mime="text/csv", key="b_dl_csv")
         with c_zip:
             zb = io.BytesIO()
+            # Include co-crystal ref in the zip
+            zip_results = ([redock_result] if redock_result else []) + ok_results
             with zipfile.ZipFile(zb, "w", zipfile.ZIP_DEFLATED) as zf:
-                for r in ok_results:
+                for r in zip_results:
+                    safe_name = r["Name"].replace("⭐ ", "").replace(" (co-crystal ref)", "")
                     if r.get("out_sdf") and os.path.exists(r["out_sdf"]):
-                        zf.write(r["out_sdf"], f"poses/{r['Name']}_out.sdf")
+                        zf.write(r["out_sdf"], f"poses/{safe_name}_out.sdf")
                     if r.get("out_pdbqt") and os.path.exists(r["out_pdbqt"]):
-                        zf.write(r["out_pdbqt"], f"pdbqt/{r['Name']}_out.pdbqt")
+                        zf.write(r["out_pdbqt"], f"pdbqt/{safe_name}_out.pdbqt")
                 if not ok_df.empty:
                     zf.writestr("batch_scores.csv", ok_df.to_csv(index=False))
                 rec_fh = st.session_state.get("b_receptor_fh")
