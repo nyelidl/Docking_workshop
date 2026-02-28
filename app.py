@@ -887,7 +887,7 @@ with tab_batch:
                        "C1=CC=C(C=C1)C2=CC(=O)C3=C(O2)C=C(C(=C3O)OC)O Galangin\n"
                        "CC1=C(C=C(C=C1)NC2=NC=NC3=C2C=CC=C3)OC Imatinib"
                       ),
-                height=150, key="b_smiles_text")
+                height=200, key="b_smiles_text")
         elif b_input_mode == "Upload .smi file":
             st.file_uploader("Upload .smi file", type=["smi", "txt"], key="b_smi_file")
         else:
@@ -1153,7 +1153,6 @@ with tab_batch:
                                linestyle="--", label=f"Co-crystal ref: {redock_score:.2f}")
                     ax.legend(facecolor=_cc["legend_bg"], edgecolor=_cc["border"],
                               labelcolor=_cc["text"], fontsize=8)
-                ax.invert_yaxis()
                 ax.set_ylabel("Vina score (kcal/mol)", color=_cc["muted"], fontsize=9)
                 ax.set_xlabel("Ligand", color=_cc["muted"], fontsize=9)
                 ax.tick_params(colors=_cc["muted"], labelsize=7)
