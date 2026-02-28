@@ -319,7 +319,7 @@ def _show_poseview_image(png_data, url, caption):
             f'''<div style="background:#ffffff;border-radius:8px;padding:12px;
                            border:1px solid #D0D7DE;margin:8px 0;">
                 <img src="data:image/png;base64,{b64}"
-                     style="width:100%;height:auto;display:block;" />
+                     style="width:70%;height:auto;display:block;" />
                 <div style="text-align:center;font-size:0.78rem;color:#57606A;
                             margin-top:6px;">{caption}</div>
             </div>''',
@@ -330,7 +330,7 @@ def _show_poseview_image(png_data, url, caption):
         st.markdown(
             f'''<div style="background:#ffffff;border-radius:8px;padding:12px;
                            border:1px solid #D0D7DE;margin:8px 0;">
-                <img src="{url}" style="width:100%;height:auto;display:block;" />
+                <img src="{url}" style="width:70%;height:auto;display:block;" />
                 <div style="text-align:center;font-size:0.78rem;color:#57606A;
                             margin-top:6px;">{caption}</div>
             </div>''',
