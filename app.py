@@ -301,12 +301,41 @@ def _call_poseview(receptor_pdb: str, pose_sdf: str):
 
 
 def _svg_to_png(svg_bytes: bytes):
-    """Convert SVG bytes → PNG bytes via cairosvg. Returns None on failure."""
+    """Convert SVG bytes → PNG bytes via cairosvg, white background. Returns None on failure."""
     try:
         import cairosvg
-        return cairosvg.svg2png(bytestring=svg_bytes, scale=2)
+        return cairosvg.svg2png(bytestring=svg_bytes, scale=2, background_color="white")
     except Exception:
         return None
+
+
+def _show_poseview_image(png_data, url, caption):
+    """Display PoseView image — always on a white card background."""
+    if png_data:
+        # Encode PNG to base64 and embed in a white-bg container
+        import base64
+        b64 = base64.b64encode(png_data).decode()
+        st.markdown(
+            f'''<div style="background:#ffffff;border-radius:8px;padding:12px;
+                           border:1px solid #D0D7DE;margin:8px 0;">
+                <img src="data:image/png;base64,{b64}"
+                     style="width:100%;height:auto;display:block;" />
+                <div style="text-align:center;font-size:0.78rem;color:#57606A;
+                            margin-top:6px;">{caption}</div>
+            </div>''',
+            unsafe_allow_html=True,
+        )
+    else:
+        # Fallback: URL — wrap in white container via iframe-like div
+        st.markdown(
+            f'''<div style="background:#ffffff;border-radius:8px;padding:12px;
+                           border:1px solid #D0D7DE;margin:8px 0;">
+                <img src="{url}" style="width:100%;height:auto;display:block;" />
+                <div style="text-align:center;font-size:0.78rem;color:#57606A;
+                            margin-top:6px;">{caption}</div>
+            </div>''',
+            unsafe_allow_html=True,
+        )
 
 def _rdkit_six_patch():
     """Compatibility shim for older Meeko versions that import rdkit.six."""
@@ -561,7 +590,7 @@ def _receptor_section(pfx: str, wdir: Path, step_label: str):
 # ══════════════════════════════════════════════════════════════════════════════
 #  HEADER
 # ══════════════════════════════════════════════════════════════════════════════
-st.markdown("# 🧬 Anyone can dock, everyone can do!")
+st.markdown("# 🧬 Anyone can do, everyone can dock!")
 st.markdown(
     "Molecular docking powered by **AutoDock Vina 1.2.7**, **RDKit**, **Meeko**, and **OpenBabel**. "
     "**Basic** — single ligand. **Batch** — multiple ligands."
@@ -953,13 +982,12 @@ with tab_basic:
                 _lig_nm   = st.session_state.get("ligand_name", "ligand")
                 _fname    = f"{_lig_nm}_pose{pose_idx+1}_poseview"
 
-                # Show PNG
-                if _png_data:
-                    st.image(_png_data, use_container_width=True,
-                             caption=f"PoseView — {_lig_nm} pose {pose_idx+1}")
-                else:
-                    st.image(st.session_state["pv_image_url"], use_container_width=True,
-                             caption=f"PoseView — {_lig_nm} pose {pose_idx+1}")
+                # Show PNG on white background
+                _show_poseview_image(
+                    _png_data,
+                    st.session_state["pv_image_url"],
+                    f"PoseView — {_lig_nm} pose {pose_idx+1}",
+                )
 
                 # Download buttons — PNG + SVG side by side
                 _dl_c1, _dl_c2, _dl_c3 = st.columns([1, 1, 2])
@@ -1466,13 +1494,12 @@ with tab_batch:
                     _b_svg_data = st.session_state.get("b_pv_image_svg")
                     _b_fname    = f"{sel_nm}_pose{b_pose_i+1}_poseview"
 
-                    # Show PNG
-                    if _b_png_data:
-                        st.image(_b_png_data, use_container_width=True,
-                                 caption=f"PoseView — {sel_nm} pose {b_pose_i+1}")
-                    else:
-                        st.image(st.session_state["b_pv_image_url"], use_container_width=True,
-                                 caption=f"PoseView — {sel_nm} pose {b_pose_i+1}")
+                    # Show PNG on white background
+                    _show_poseview_image(
+                        _b_png_data,
+                        st.session_state["b_pv_image_url"],
+                        f"PoseView — {sel_nm} pose {b_pose_i+1}",
+                    )
 
                     # Download buttons — PNG + SVG side by side
                     _b_dl_c1, _b_dl_c2, _b_dl_c3 = st.columns([1, 1, 2])
