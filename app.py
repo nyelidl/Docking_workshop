@@ -26,20 +26,20 @@ st.markdown("""
 @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans:wght@300;400;600&display=swap');
 
 html, body, [data-testid="stAppViewContainer"] {
-    background-color: #0d1117;
-    color: #c9d1d9;
+    background-color: #FFFFFF;
+    color: #24292F;
     font-family: 'IBM Plex Sans', sans-serif;
 }
-[data-testid="stSidebar"] { background: #161b22; }
+[data-testid="stSidebar"] { background: #F6F8FA; }
 [data-testid="stHeader"]  { background: transparent; }
 
-h1 { font-family: 'IBM Plex Mono', monospace; color: #58a6ff; letter-spacing: -1px; }
+h1 { font-family: 'IBM Plex Mono', monospace; color: #0969DA; letter-spacing: -1px; }
 h2, h3 { font-family: 'IBM Plex Mono', monospace; color: #79c0ff; }
 
 .step-card {
-    background: #161b22;
+    background: #F6F8FA;
     border: 1px solid #30363d;
-    border-left: 4px solid #58a6ff;
+    border-left: 4px solid #0969DA;
     border-radius: 8px;
     padding: 20px 24px;
     margin-bottom: 24px;
@@ -75,7 +75,7 @@ h2, h3 { font-family: 'IBM Plex Mono', monospace; color: #79c0ff; }
     font-family: 'IBM Plex Mono', monospace; font-size: 0.85rem;
 }
 .log-box {
-    background: #0d1117; border: 1px solid #30363d; border-radius: 6px;
+    background: #FFFFFF; border: 1px solid #30363d; border-radius: 6px;
     padding: 12px 16px;
     font-family: 'IBM Plex Mono', monospace; font-size: 0.78rem; color: #8b949e;
     max-height: 220px; overflow-y: auto; white-space: pre-wrap;
@@ -96,17 +96,17 @@ h2, h3 { font-family: 'IBM Plex Mono', monospace; color: #79c0ff; }
 .stSelectbox > div > div,
 .stNumberInput > div > div > input {
     background: #21262d !important; border: 1px solid #30363d !important;
-    color: #c9d1d9 !important; border-radius: 6px !important;
+    color: #24292F !important; border-radius: 6px !important;
     font-family: 'IBM Plex Mono', monospace !important;
 }
-.stSlider > div { color: #c9d1d9; }
-[data-baseweb="slider"] { accent-color: #58a6ff; }
+.stSlider > div { color: #24292F; }
+[data-baseweb="slider"] { accent-color: #0969DA; }
 .stDataFrame { border: 1px solid #30363d; border-radius: 6px; }
 hr { border-color: #30363d; }
 .step-divider { border: none; border-top: 1px dashed #30363d; margin: 32px 0; }
 
 [data-testid="stTabs"] [data-baseweb="tab-list"] {
-    background: #161b22; border-bottom: 1px solid #30363d; gap: 4px;
+    background: #F6F8FA; border-bottom: 1px solid #30363d; gap: 4px;
 }
 [data-testid="stTabs"] [data-baseweb="tab"] {
     font-family: 'IBM Plex Mono', monospace; font-size: 0.9rem;
@@ -114,8 +114,8 @@ hr { border-color: #30363d; }
     padding: 10px 20px;
 }
 [data-testid="stTabs"] [aria-selected="true"] {
-    color: #58a6ff !important; background: #0d1117 !important;
-    border-bottom: 2px solid #58a6ff !important;
+    color: #0969DA !important; background: #FFFFFF !important;
+    border-bottom: 2px solid #0969DA !important;
 }
 </style>
 """, unsafe_allow_html=True)
@@ -396,7 +396,7 @@ def _receptor_section(pfx: str, wdir: Path, step_label: str):
                 unsafe_allow_html=True)
         with st.expander("🔭 3D: Receptor + Docking Box", expanded=True):
             v3 = py3Dmol.view(width="100%", height=480)
-            v3.setBackgroundColor("#0d1117")
+            v3.setBackgroundColor("#FFFFFF")
             mi = 0
             for path, style in [
                 (st.session_state.get(pfx+"receptor_fh"),
@@ -477,7 +477,7 @@ with tab_basic:
                     f'<div style="background:#1f6feb15;border:1px solid #1f6feb;'
                     f'border-radius:8px;padding:16px;">'
                     f'<div style="font-family:\'IBM Plex Mono\',monospace;font-size:1.8rem;'
-                    f'color:#58a6ff">pKa = {pka_v:.2f}</div>'
+                    f'color:#0969DA">pKa = {pka_v:.2f}</div>'
                     f'<div style="color:#8b949e;font-size:0.85rem">at pH {ph_in:.1f}: '
                     f'likely <b style="color:#79c0ff">{charged}</b></div>'
                     f'</div>', unsafe_allow_html=True)
@@ -556,7 +556,7 @@ with tab_basic:
             st.markdown("**3D Conformer**")
             try:
                 vl = py3Dmol.view(width="100%", height=280)
-                vl.setBackgroundColor("#0d1117")
+                vl.setBackgroundColor("#FFFFFF")
                 vl.addModel(open(st.session_state.ligand_sdf).read(), "sdf")
                 vl.setStyle({}, {"stick": {"colorscheme": "yellowCarbon", "radius": 0.2}})
                 vl.zoomTo(); show3d(vl, height=280)
@@ -681,8 +681,8 @@ with tab_basic:
             st.markdown("**Affinity by Pose**")
             if df is not None:
                 fig, ax = plt.subplots(figsize=(6, 3.5))
-                fig.patch.set_facecolor("#161b22"); ax.set_facecolor("#0d1117")
-                cols = ["#3fb950" if v == df["Affinity (kcal/mol)"].min() else "#58a6ff"
+                fig.patch.set_facecolor("#F6F8FA"); ax.set_facecolor("#FFFFFF")
+                cols = ["#3fb950" if v == df["Affinity (kcal/mol)"].min() else "#0969DA"
                         for v in df["Affinity (kcal/mol)"]]
                 ax.bar(df["Pose"].astype(str), df["Affinity (kcal/mol)"],
                        color=cols, edgecolor="#30363d", linewidth=0.6)
@@ -701,7 +701,7 @@ with tab_basic:
         anim_spd = st.slider("Interval (ms)", 500, 3000, 1500, 250, key="anim_spd")
         if st.session_state.output_sdf and os.path.exists(st.session_state.output_sdf):
             sdf_txt = open(st.session_state.output_sdf).read()
-            va = py3Dmol.view(width="100%", height=440); va.setBackgroundColor("#0d1117")
+            va = py3Dmol.view(width="100%", height=440); va.setBackgroundColor("#FFFFFF")
             mai = 0
             if st.session_state.receptor_fh and os.path.exists(st.session_state.receptor_fh):
                 va.addModel(open(st.session_state.receptor_fh).read(), "pdb")
@@ -736,7 +736,7 @@ with tab_basic:
             cpv, cdl = st.columns([3, 1])
             with cpv:
                 try:
-                    v2 = py3Dmol.view(width="100%", height=400); v2.setBackgroundColor("#0d1117")
+                    v2 = py3Dmol.view(width="100%", height=400); v2.setBackgroundColor("#FFFFFF")
                     mi2 = 0
                     if st.session_state.receptor_fh and os.path.exists(st.session_state.receptor_fh):
                         v2.addModel(open(st.session_state.receptor_fh).read(), "pdb")
@@ -1056,11 +1056,11 @@ with tab_batch:
             st.markdown("**Top Score per Ligand**")
             if not ok_df.empty:
                 fig, ax = plt.subplots(figsize=(max(5, len(ok_df)*0.6 + 1.5), 4))
-                fig.patch.set_facecolor("#161b22"); ax.set_facecolor("#0d1117")
+                fig.patch.set_facecolor("#F6F8FA"); ax.set_facecolor("#FFFFFF")
                 scores = ok_df["Top Score (kcal/mol)"].values
                 names  = ok_df["Name"].values
                 best_i = int(np.argmin(scores))
-                colors = ["#3fb950" if i == best_i else "#58a6ff" for i in range(len(scores))]
+                colors = ["#3fb950" if i == best_i else "#0969DA" for i in range(len(scores))]
                 ax.scatter(names, scores, color=colors, s=90, zorder=3,
                            edgecolors="#30363d", linewidths=0.5)
                 ax.plot(names, scores, color="#30363d", linewidth=0.8, zorder=2)
@@ -1068,7 +1068,7 @@ with tab_batch:
                     ax.axhline(redock_score, color="#f85149", linewidth=1.5,
                                linestyle="--", label=f"Co-crystal ref: {redock_score:.2f}")
                     ax.legend(facecolor="#21262d", edgecolor="#30363d",
-                              labelcolor="#c9d1d9", fontsize=8)
+                              labelcolor="#24292F", fontsize=8)
                 ax.invert_yaxis()
                 ax.set_ylabel("Vina score (kcal/mol)", color="#8b949e", fontsize=9)
                 ax.set_xlabel("Ligand", color="#8b949e", fontsize=9)
@@ -1102,7 +1102,7 @@ with tab_batch:
                 with cbv:
                     try:
                         vb = py3Dmol.view(width="100%", height=420)
-                        vb.setBackgroundColor("#0d1117"); bmi = 0
+                        vb.setBackgroundColor("#FFFFFF"); bmi = 0
                         rec_fh = st.session_state.get("b_receptor_fh")
                         if rec_fh and os.path.exists(rec_fh):
                             vb.addModel(open(rec_fh).read(), "pdb")
@@ -1169,7 +1169,7 @@ st.markdown(
     'AutoDock Vina 1.2.7 · Meeko · RDKit · OpenBabel · py3Dmol<br>'
     'Eberhardt et al. J. Chem. Inf. Model. 2021, 61, 3891–3898 &nbsp;·&nbsp; '
     '<a href="https://pubs.acs.org/doi/10.1021/acs.jcim.5c02852" target="_blank" '
-    'style="color:#58a6ff;text-decoration:none;">'
+    'style="color:#0969DA;text-decoration:none;">'
     'DFDD — Hengphasatporn et al. J. Chem. Inf. Model. 2026</a>'
     '</div>',
     unsafe_allow_html=True,
