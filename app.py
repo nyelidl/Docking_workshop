@@ -141,7 +141,7 @@ BATCH_WORKDIR.mkdir(exist_ok=True)
 
 # ─── Helpers ──────────────────────────────────────────────────────────────────
 def show3d(view, height=480):
-    """Render py3Dmol responsively — fills container on any screen width."""
+    """Render py3Dmol responsively - fills container on any screen width."""
     try:
         from stmol import showmol
         showmol(view, height=height)
