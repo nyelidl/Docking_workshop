@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-AutoDock Vina 1.2.7 - Streamlit Docking Interface
+AutoDock Vina 1.2.7 — Streamlit Docking Interface
 Tabs: Basic (single ligand) | Batch (multiple ligands)
 """
 
@@ -26,105 +26,118 @@ st.markdown("""
 @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans:wght@300;400;600&display=swap');
 
 html, body, [data-testid="stAppViewContainer"] {
-    background-color: #FFFFFF;
-    color: #24292F;
+    background-color: #0d1117;
+    color: #c9d1d9;
     font-family: 'IBM Plex Sans', sans-serif;
 }
-[data-testid="stSidebar"] { background: #F6F8FA; }
+[data-testid="stSidebar"] { background: #161b22; }
 [data-testid="stHeader"]  { background: transparent; }
 
-h1 { font-family: 'IBM Plex Mono', monospace; color: #0969DA; letter-spacing: -1px; }
-h2, h3 { font-family: 'IBM Plex Mono', monospace; color: #0550AE; }
+h1 { font-family: 'IBM Plex Mono', monospace; color: #58a6ff; letter-spacing: -1px; }
+h2, h3 { font-family: 'IBM Plex Mono', monospace; color: #79c0ff; }
 
 .step-card {
-    background: #F6F8FA;
-    border: 1px solid #D0D7DE;
-    border-left: 4px solid #0969DA;
+    background: #161b22;
+    border: 1px solid #30363d;
+    border-left: 4px solid #58a6ff;
     border-radius: 8px;
     padding: 20px 24px;
     margin-bottom: 24px;
 }
-.step-card.done    { border-left-color: #1A7F37; }
-.step-card.running { border-left-color: #9A6700; }
+.step-card.done    { border-left-color: #3fb950; }
+.step-card.running { border-left-color: #d29922; }
 
 .step-title {
     font-family: 'IBM Plex Mono', monospace;
-    font-size: 0.85rem; color: #57606A;
+    font-size: 0.85rem; color: #8b949e;
     text-transform: uppercase; letter-spacing: 2px; margin-bottom: 4px;
 }
 .step-heading {
     font-family: 'IBM Plex Mono', monospace;
-    font-size: 1.3rem; color: #24292F; margin-bottom: 16px;
+    font-size: 1.3rem; color: #e6edf3; margin-bottom: 16px;
 }
 .result-pill {
     display: inline-block;
-    background: #DDF4FF; border: 1px solid #54AEFF; color: #0969DA;
+    background: #1f6feb22; border: 1px solid #1f6feb; color: #79c0ff;
     border-radius: 20px; padding: 2px 12px;
     font-family: 'IBM Plex Mono', monospace; font-size: 0.8rem; margin: 2px;
 }
 .success-pill {
     display: inline-block;
-    background: #DAFBE1; border: 1px solid #1A7F37; color: #1A7F37;
+    background: #23863622; border: 1px solid #238636; color: #3fb950;
     border-radius: 20px; padding: 4px 14px;
     font-family: 'IBM Plex Mono', monospace; font-size: 0.85rem;
 }
 .warn-pill {
     display: inline-block;
-    background: #FFF8C5; border: 1px solid #9A6700; color: #9A6700;
+    background: #9e680322; border: 1px solid #9e6803; color: #d29922;
     border-radius: 20px; padding: 4px 14px;
     font-family: 'IBM Plex Mono', monospace; font-size: 0.85rem;
 }
 .log-box {
-    background: #F6F8FA; border: 1px solid #D0D7DE; border-radius: 6px;
+    background: #0d1117; border: 1px solid #30363d; border-radius: 6px;
     padding: 12px 16px;
-    font-family: 'IBM Plex Mono', monospace; font-size: 0.78rem; color: #57606A;
+    font-family: 'IBM Plex Mono', monospace; font-size: 0.78rem; color: #8b949e;
     max-height: 220px; overflow-y: auto; white-space: pre-wrap;
 }
-.score-best { font-family: 'IBM Plex Mono', monospace; font-size: 2.4rem; color: #1A7F37; font-weight: 600; }
-.score-unit { font-size: 1rem; color: #57606A; }
+.score-best { font-family: 'IBM Plex Mono', monospace; font-size: 2.4rem; color: #3fb950; font-weight: 600; }
+.score-unit { font-size: 1rem; color: #8b949e; }
 
 .stButton > button {
-    background: #1A7F37; color: white; border: none; border-radius: 6px;
+    background: #238636; color: white; border: none; border-radius: 6px;
     font-family: 'IBM Plex Mono', monospace; font-size: 0.88rem;
     padding: 8px 20px; transition: background 0.2s;
 }
-.stButton > button:hover { background: #2DA44E; }
-.stButton > button[kind="secondary"] { background: #F6F8FA; border: 1px solid #D0D7DE; color: #24292F; }
-.stButton > button[kind="secondary"]:hover { background: #D0D7DE; }
+.stButton > button:hover { background: #2ea043; }
+.stButton > button[kind="secondary"] { background: #21262d; border: 1px solid #30363d; }
+.stButton > button[kind="secondary"]:hover { background: #30363d; }
 
 .stTextInput > div > div > input,
 .stSelectbox > div > div,
 .stNumberInput > div > div > input {
-    background: #FFFFFF !important; border: 1px solid #D0D7DE !important;
-    color: #24292F !important; border-radius: 6px !important;
+    background: #21262d !important; border: 1px solid #30363d !important;
+    color: #c9d1d9 !important; border-radius: 6px !important;
     font-family: 'IBM Plex Mono', monospace !important;
 }
-.stSlider > div { color: #24292F; }
-[data-baseweb="slider"] { accent-color: #0969DA; }
-.stDataFrame { border: 1px solid #D0D7DE; border-radius: 6px; }
-hr { border-color: #D0D7DE; }
-.step-divider { border: none; border-top: 1px dashed #D0D7DE; margin: 32px 0; }
+.stSlider > div { color: #c9d1d9; }
+[data-baseweb="slider"] { accent-color: #58a6ff; }
+.stDataFrame { border: 1px solid #30363d; border-radius: 6px; }
+hr { border-color: #30363d; }
+.step-divider { border: none; border-top: 1px dashed #30363d; margin: 32px 0; }
 
-[data-testid="stTabs"] [data-baseweb="tab-
+[data-testid="stTabs"] [data-baseweb="tab-list"] {
+    background: #161b22; border-bottom: 1px solid #30363d; gap: 4px;
+}
+[data-testid="stTabs"] [data-baseweb="tab"] {
+    font-family: 'IBM Plex Mono', monospace; font-size: 0.9rem;
+    color: #8b949e; background: transparent; border-radius: 6px 6px 0 0;
+    padding: 10px 20px;
+}
+[data-testid="stTabs"] [aria-selected="true"] {
+    color: #58a6ff !important; background: #0d1117 !important;
+    border-bottom: 2px solid #58a6ff !important;
+}
+</style>
+""", unsafe_allow_html=True)
 
 # ─── Session State ─────────────────────────────────────────────────────────────
 _DEFAULTS = dict(
     workdir=None,
-    # Basic - receptor
+    # Basic — receptor
     pdb_token=None, raw_pdb=None, receptor_fh=None, receptor_pdbqt=None,
     box_pdb=None, config_txt=None, cx=None, cy=None, cz=None,
     ligand_pdb_path=None, receptor_done=False, receptor_log="",
-    # Basic - ligand
+    # Basic — ligand
     ligand_pdbqt=None, ligand_sdf=None, ligand_name="ELR",
     prot_smiles=None, ligand_done=False, ligand_log="",
-    # Basic - docking
+    # Basic — docking
     output_pdbqt=None, output_sdf=None, dock_base=None,
     docking_done=False, docking_log="", score_df=None, pose_mols=None,
-    # Batch - receptor  (b_ prefix keeps state separate)
+    # Batch — receptor  (b_ prefix keeps state separate)
     b_pdb_token=None, b_raw_pdb=None, b_receptor_fh=None, b_receptor_pdbqt=None,
     b_box_pdb=None, b_config_txt=None, b_cx=None, b_cy=None, b_cz=None,
     b_ligand_pdb_path=None, b_receptor_done=False, b_receptor_log="",
-    # Batch - results
+    # Batch — results
     b_batch_done=False, b_batch_results=None, b_batch_log="",
     b_redock_score=None,
 )
@@ -141,7 +154,7 @@ BATCH_WORKDIR.mkdir(exist_ok=True)
 
 # ─── Helpers ──────────────────────────────────────────────────────────────────
 def show3d(view, height=480):
-    """Render py3Dmol responsively - fills container on any screen width."""
+    """Render py3Dmol responsively — fills container on any screen width."""
     try:
         from stmol import showmol
         showmol(view, height=height)
@@ -172,7 +185,7 @@ def _rdkit_six_patch():
         _rdkit.six = _m; sys.modules["rdkit.six"] = _m
 
 def _meeko_to_pdbqt(mol, out_path):
-    """Prepare a mol to PDBQT using Meeko - supports both v0.4 and v0.5 API."""
+    """Prepare a mol to PDBQT using Meeko — supports both v0.4 and v0.5 API."""
     from meeko import MoleculePreparation
     prep = MoleculePreparation()
     try:
@@ -412,7 +425,7 @@ def _receptor_section(pfx: str, wdir: Path, step_label: str):
 st.markdown("# 🧬 AutoDock Vina 1.2.7")
 st.markdown(
     "Molecular docking powered by **AutoDock Vina 1.2.7**, **RDKit**, **Meeko**, and **OpenBabel**. "
-    "**Basic** - single ligand. **Batch** - multiple ligands."
+    "**Basic** — single ligand. **Batch** — multiple ligands."
 )
 if VINA_PATH is None:
     st.error(f"❌ Could not download Vina binary: {_vina_err}")
@@ -426,13 +439,13 @@ st.markdown('<hr class="step-divider">', unsafe_allow_html=True)
 #  TABS
 # ══════════════════════════════════════════════════════════════════════════════
 tab_basic, tab_batch = st.tabs([
-    "🧪  Basic - single ligand",
-    "🔬  Batch - multiple ligands",
+    "🧪  Basic — single ligand",
+    "🔬  Batch — multiple ligands",
 ])
 
 
 # ╔════════════════════════════════════════════════════════════════════════════╗
-#  TAB 1 - BASIC DOCKING
+#  TAB 1 — BASIC DOCKING
 # ╚════════════════════════════════════════════════════════════════════════════╝
 with tab_basic:
 
@@ -634,7 +647,7 @@ with tab_basic:
                 f'<div class="score-best">{best:.2f} '
                 f'<span class="score-unit">kcal/mol</span></div>'
                 f'<div style="color:#8b949e;font-size:0.9rem;margin-bottom:12px">'
-                f'Best pose - {cls} predicted binding</div>',
+                f'Best pose — {cls} predicted binding</div>',
                 unsafe_allow_html=True)
 
     st.markdown('</div>', unsafe_allow_html=True)
@@ -763,7 +776,7 @@ with tab_basic:
 
 
 # ╔════════════════════════════════════════════════════════════════════════════╗
-#  TAB 2 - BATCH DOCKING
+#  TAB 2 — BATCH DOCKING
 # ╚════════════════════════════════════════════════════════════════════════════╝
 with tab_batch:
 
@@ -949,7 +962,7 @@ with tab_batch:
                         redock_score = rd_top
                         st.success(f"✓ Reference score: **{redock_score:.2f} kcal/mol** ({rd_nm})")
                     else:
-                        st.warning("⚠ Redocking failed - no score returned")
+                        st.warning("⚠ Redocking failed — no score returned")
                 else:
                     st.warning(f"⚠ Reference ligand prep failed: {rd_err}")
 
@@ -986,7 +999,7 @@ with tab_batch:
                              "out_sdf": out_sdf, "Status": "OK"})
 
         n_ok_final = sum(1 for r in results if r["Status"] == "OK")
-        prog.progress(1.0, text=f"✓ Done - {n_ok_final}/{n} ligands docked successfully")
+        prog.progress(1.0, text=f"✓ Done — {n_ok_final}/{n} ligands docked successfully")
         log_slot.empty()
         st.session_state.update({
             "b_batch_done": True,
@@ -1157,7 +1170,7 @@ st.markdown(
     'Eberhardt et al. J. Chem. Inf. Model. 2021, 61, 3891–3898 &nbsp;·&nbsp; '
     '<a href="https://pubs.acs.org/doi/10.1021/acs.jcim.5c02852" target="_blank" '
     'style="color:#58a6ff;text-decoration:none;">'
-    'DFDD - Hengphasatporn et al. J. Chem. Inf. Model. 2026</a>'
+    'DFDD — Hengphasatporn et al. J. Chem. Inf. Model. 2026</a>'
     '</div>',
     unsafe_allow_html=True,
 )
