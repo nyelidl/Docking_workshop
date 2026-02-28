@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
 """
-Anyone can dock, everyone can do.
 AutoDock Vina 1.2.7 — Streamlit Docking Interface
 Tabs: Basic (single ligand) | Batch (multiple ligands)
 """
@@ -22,39 +21,30 @@ st.set_page_config(
 )
 
 
-# ─── Theme Helper ─────────────────────────────────────────────────────────────
+# ─── Theme — Light only ───────────────────────────────────────────────────────
 import streamlit.components.v1 as _comps
-def _is_dark():
-    """Detect system dark mode via JS injection (best effort)."""
-    # We use a CSS variable trick; fallback is to rely purely on CSS prefers-color-scheme
-    return False  # Charts will use matplotlib's own style
 
 def _chart_colors():
-    """Return chart color dict based on Streamlit's active theme."""
-    theme = st.get_option("theme.base") if hasattr(st, "get_option") else "light"
-    import os
-    # Try reading from streamlit config
-    dark = (theme == "dark")
+    """Always returns light-theme colors."""
     return {
-        "bg":       "#0d1117" if dark else "#FFFFFF",
-        "bg_sub":   "#161b22" if dark else "#F6F8FA",
-        "border":   "#30363d" if dark else "#D0D7DE",
-        "text":     "#c9d1d9" if dark else "#24292F",
-        "muted":    "#8b949e" if dark else "#57606A",
-        "legend_bg":"#21262d" if dark else "#F6F8FA",
+        "bg":        "#FFFFFF",
+        "bg_sub":    "#F6F8FA",
+        "border":    "#D0D7DE",
+        "text":      "#24292F",
+        "muted":     "#57606A",
+        "legend_bg": "#F6F8FA",
     }
 
-# ─── Global CSS (System-aware: auto light/dark) ───────────────────────────────
+# ─── Global CSS (Light theme — forced) ───────────────────────────────────────
 st.markdown("""
 <style>
 @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans:wght@300;400;600&display=swap');
 
-/* ── CSS Variables: Light mode (default) ── */
 :root {
     --bg:          #FFFFFF;
     --bg-subtle:   #F6F8FA;
-    --bg-card:     #3a3f47;
-    --bg-input:    #2d3139;
+    --bg-card:     #f3f4f6;
+    --bg-input:    #FFFFFF;
     --border:      #D0D7DE;
     --text:        #24292F;
     --text-muted:  #57606A;
@@ -62,10 +52,10 @@ st.markdown("""
     --accent2:     #0550AE;
     --success:     #1A7F37;
     --warn:        #9A6700;
-    --text-card-title: #9ca3af;
-    --text-card-heading: #e5e7eb;
-    --text-input: #e5e7eb;
-    --border-input: #4b5563;
+    --text-card-title:   #6b7280;
+    --text-card-heading: #111827;
+    --text-input:        #24292F;
+    --border-input:      #D0D7DE;
     --pill-border: #54AEFF;
     --pill-text:   #0550AE;
     --ok-bg:       #DAFBE1;
@@ -73,34 +63,6 @@ st.markdown("""
     --wn-bg:       #FFF8C5;
     --wn-border:   #9A6700;
     --btn-sec-bg:  #F6F8FA;
-}
-
-/* ── CSS Variables: Dark mode (follows system) ── */
-@media (prefers-color-scheme: dark) {
-    :root {
-        --bg:          #0d1117;
-        --bg-subtle:   #161b22;
-        --bg-card:     #161b22;
-        --bg-input:    #21262d;
-        --border:      #30363d;
-        --text:        #c9d1d9;
-        --text-muted:  #8b949e;
-        --accent:      #58a6ff;
-        --accent2:     #79c0ff;
-        --success:     #3fb950;
-        --warn:        #d29922;
-        --text-card-title: #8b949e;
-        --text-card-heading: #e6edf3;
-        --text-input: #c9d1d9;
-        --border-input: #30363d;
-        --pill-border: #1f6feb;
-        --pill-text:   #79c0ff;
-        --ok-bg:       #23863622;
-        --ok-border:   #238636;
-        --wn-bg:       #9e680322;
-        --wn-border:   #9e6803;
-        --btn-sec-bg:  #21262d;
-    }
 }
 
 html, body, [data-testid="stAppViewContainer"] {
@@ -225,9 +187,9 @@ _DEFAULTS = dict(
     # Confirmed reference score (set when user clicks "Use this pose as reference")
     b_confirmed_ref_score=None, b_confirmed_ref_pose=None, b_confirmed_ref_name=None,
     # PoseView — Basic tab
-    pv_image_url=None, pv_image_png=None, pv_pose_key=None,
+    pv_image_url=None, pv_image_png=None, pv_image_svg=None, pv_pose_key=None,
     # PoseView — Batch tab
-    b_pv_image_url=None, b_pv_image_png=None, b_pv_pose_key=None,
+    b_pv_image_url=None, b_pv_image_png=None, b_pv_image_svg=None, b_pv_pose_key=None,
 )
 for k, v in _DEFAULTS.items():
     if k not in st.session_state:
@@ -526,7 +488,7 @@ def _receptor_section(pfx: str, wdir: Path, step_label: str):
             })();
             </script>""", unsafe_allow_html=True)
             v3 = py3Dmol.view(width="100%", height=480)
-            v3.setBackgroundColor("#0d1117" if _chart_colors()["bg"] == "#0d1117" else "#FFFFFF")
+            v3.setBackgroundColor("#FFFFFF")
             mi = 0
             for path, style in [
                 (st.session_state.get(pfx+"receptor_fh"),
@@ -552,7 +514,7 @@ def _receptor_section(pfx: str, wdir: Path, step_label: str):
 # ══════════════════════════════════════════════════════════════════════════════
 #  HEADER
 # ══════════════════════════════════════════════════════════════════════════════
-st.markdown("# 🧬 Anyone can dock, Everyone can do!")
+st.markdown("# 🧬 Anyone can dock, everyone can do!")
 st.markdown(
     "Molecular docking powered by **AutoDock Vina 1.2.7**, **RDKit**, **Meeko**, and **OpenBabel**. "
     "**Basic** — single ligand. **Batch** — multiple ligands."
@@ -684,7 +646,7 @@ with tab_basic:
             st.markdown("**3D Conformer**")
             try:
                 vl = py3Dmol.view(width="100%", height=280)
-                vl.setBackgroundColor("#0d1117" if _chart_colors()["bg"] == "#0d1117" else "#FFFFFF")
+                vl.setBackgroundColor("#FFFFFF")
                 vl.addModel(open(st.session_state.ligand_sdf).read(), "sdf")
                 vl.setStyle({}, {"stick": {"colorscheme": "yellowCarbon", "radius": 0.2}})
                 vl.zoomTo(); show3d(vl, height=280)
@@ -826,7 +788,7 @@ with tab_basic:
         anim_spd = st.slider("Interval (ms)", 500, 3000, 1500, 250, key="anim_spd")
         if st.session_state.output_sdf and os.path.exists(st.session_state.output_sdf):
             sdf_txt = open(st.session_state.output_sdf).read()
-            va = py3Dmol.view(width="100%", height=440); va.setBackgroundColor("#0d1117" if _chart_colors()["bg"] == "#0d1117" else "#FFFFFF")
+            va = py3Dmol.view(width="100%", height=440); va.setBackgroundColor("#FFFFFF")
             mai = 0
             if st.session_state.receptor_fh and os.path.exists(st.session_state.receptor_fh):
                 va.addModel(open(st.session_state.receptor_fh).read(), "pdb")
@@ -861,7 +823,7 @@ with tab_basic:
             cpv, cdl = st.columns([3, 1])
             with cpv:
                 try:
-                    v2 = py3Dmol.view(width="100%", height=400); v2.setBackgroundColor("#0d1117" if _chart_colors()["bg"] == "#0d1117" else "#FFFFFF")
+                    v2 = py3Dmol.view(width="100%", height=400); v2.setBackgroundColor("#FFFFFF")
                     mi2 = 0
                     if st.session_state.receptor_fh and os.path.exists(st.session_state.receptor_fh):
                         v2.addModel(open(st.session_state.receptor_fh).read(), "pdb")
@@ -934,18 +896,48 @@ with tab_basic:
                         _png = _svg_to_png(_raw)
                         st.session_state["pv_image_url"]  = _url
                         st.session_state["pv_image_png"]  = _png
+                        st.session_state["pv_image_svg"]  = _raw
                         st.session_state["pv_pose_key"]   = _pose_key
 
-            # Display stored image
+            # Display stored image + download buttons
             if st.session_state.get("pv_image_url") and not _pv_stale:
                 _png_data = st.session_state.get("pv_image_png")
+                _svg_data = st.session_state.get("pv_image_svg")
+                _lig_nm   = st.session_state.get("ligand_name", "ligand")
+                _fname    = f"{_lig_nm}_pose{pose_idx+1}_poseview"
+
+                # Show PNG
                 if _png_data:
                     st.image(_png_data, use_container_width=True,
-                             caption=f"PoseView — {st.session_state.get('ligand_name','ligand')} pose {pose_idx+1}")
+                             caption=f"PoseView — {_lig_nm} pose {pose_idx+1}")
                 else:
                     st.image(st.session_state["pv_image_url"], use_container_width=True,
-                             caption=f"PoseView — {st.session_state.get('ligand_name','ligand')} pose {pose_idx+1}")
-                st.caption(f"🔗 [Full-resolution SVG]({st.session_state['pv_image_url']})")
+                             caption=f"PoseView — {_lig_nm} pose {pose_idx+1}")
+
+                # Download buttons — PNG + SVG side by side
+                _dl_c1, _dl_c2, _dl_c3 = st.columns([1, 1, 2])
+                with _dl_c1:
+                    if _png_data:
+                        st.download_button(
+                            "⬇ Save PNG",
+                            data=_png_data,
+                            file_name=f"{_fname}.png",
+                            mime="image/png",
+                            key="dl_pv_png_basic",
+                            use_container_width=True,
+                        )
+                with _dl_c2:
+                    if _svg_data:
+                        st.download_button(
+                            "⬇ Save SVG",
+                            data=_svg_data,
+                            file_name=f"{_fname}.svg",
+                            mime="image/svg+xml",
+                            key="dl_pv_svg_basic",
+                            use_container_width=True,
+                        )
+                with _dl_c3:
+                    st.caption("💡 SVG is vector — scalable for publications. PNG for quick use.")
 
     st.markdown('</div>', unsafe_allow_html=True)
 
@@ -1316,7 +1308,7 @@ with tab_batch:
                 with cbv:
                     try:
                         vb = py3Dmol.view(width="100%", height=420)
-                        vb.setBackgroundColor("#0d1117" if _chart_colors()["bg"] == "#0d1117" else "#FFFFFF"); bmi = 0
+                        vb.setBackgroundColor("#FFFFFF"); bmi = 0
                         rec_fh = st.session_state.get("b_receptor_fh")
                         if rec_fh and os.path.exists(rec_fh):
                             vb.addModel(open(rec_fh).read(), "pdb")
@@ -1418,18 +1410,47 @@ with tab_batch:
                             _b_png = _svg_to_png(_b_raw)
                             st.session_state["b_pv_image_url"]  = _b_url
                             st.session_state["b_pv_image_png"]  = _b_png
+                            st.session_state["b_pv_image_svg"]  = _b_raw
                             st.session_state["b_pv_pose_key"]   = _b_pose_key
 
-                # Display stored image
+                # Display stored image + download buttons
                 if st.session_state.get("b_pv_image_url") and not _b_pv_stale:
                     _b_png_data = st.session_state.get("b_pv_image_png")
+                    _b_svg_data = st.session_state.get("b_pv_image_svg")
+                    _b_fname    = f"{sel_nm}_pose{b_pose_i+1}_poseview"
+
+                    # Show PNG
                     if _b_png_data:
                         st.image(_b_png_data, use_container_width=True,
                                  caption=f"PoseView — {sel_nm} pose {b_pose_i+1}")
                     else:
                         st.image(st.session_state["b_pv_image_url"], use_container_width=True,
                                  caption=f"PoseView — {sel_nm} pose {b_pose_i+1}")
-                    st.caption(f"🔗 [Full-resolution SVG]({st.session_state['b_pv_image_url']})")
+
+                    # Download buttons — PNG + SVG side by side
+                    _b_dl_c1, _b_dl_c2, _b_dl_c3 = st.columns([1, 1, 2])
+                    with _b_dl_c1:
+                        if _b_png_data:
+                            st.download_button(
+                                "⬇ Save PNG",
+                                data=_b_png_data,
+                                file_name=f"{_b_fname}.png",
+                                mime="image/png",
+                                key="dl_pv_png_batch",
+                                use_container_width=True,
+                            )
+                    with _b_dl_c2:
+                        if _b_svg_data:
+                            st.download_button(
+                                "⬇ Save SVG",
+                                data=_b_svg_data,
+                                file_name=f"{_b_fname}.svg",
+                                mime="image/svg+xml",
+                                key="dl_pv_svg_batch",
+                                use_container_width=True,
+                            )
+                    with _b_dl_c3:
+                        st.caption("💡 SVG is vector — scalable for publications. PNG for quick use.")
 
         st.markdown("---")
 
