@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-AutoDock Vina 1.2.7 — Streamlit Docking Interface
+AutoDock Vina 1.2.7 - Streamlit Docking Interface
 Tabs: Basic (single ligand) | Batch (multiple ligands)
 """
 
@@ -110,21 +110,21 @@ hr { border-color: #D0D7DE; }
 # ─── Session State ─────────────────────────────────────────────────────────────
 _DEFAULTS = dict(
     workdir=None,
-    # Basic — receptor
+    # Basic - receptor
     pdb_token=None, raw_pdb=None, receptor_fh=None, receptor_pdbqt=None,
     box_pdb=None, config_txt=None, cx=None, cy=None, cz=None,
     ligand_pdb_path=None, receptor_done=False, receptor_log="",
-    # Basic — ligand
+    # Basic - ligand
     ligand_pdbqt=None, ligand_sdf=None, ligand_name="ELR",
     prot_smiles=None, ligand_done=False, ligand_log="",
-    # Basic — docking
+    # Basic - docking
     output_pdbqt=None, output_sdf=None, dock_base=None,
     docking_done=False, docking_log="", score_df=None, pose_mols=None,
-    # Batch — receptor  (b_ prefix keeps state separate)
+    # Batch - receptor  (b_ prefix keeps state separate)
     b_pdb_token=None, b_raw_pdb=None, b_receptor_fh=None, b_receptor_pdbqt=None,
     b_box_pdb=None, b_config_txt=None, b_cx=None, b_cy=None, b_cz=None,
     b_ligand_pdb_path=None, b_receptor_done=False, b_receptor_log="",
-    # Batch — results
+    # Batch - results
     b_batch_done=False, b_batch_results=None, b_batch_log="",
     b_redock_score=None,
 )
@@ -172,7 +172,7 @@ def _rdkit_six_patch():
         _rdkit.six = _m; sys.modules["rdkit.six"] = _m
 
 def _meeko_to_pdbqt(mol, out_path):
-    """Prepare a mol to PDBQT using Meeko — supports both v0.4 and v0.5 API."""
+    """Prepare a mol to PDBQT using Meeko - supports both v0.4 and v0.5 API."""
     from meeko import MoleculePreparation
     prep = MoleculePreparation()
     try:
@@ -412,7 +412,7 @@ def _receptor_section(pfx: str, wdir: Path, step_label: str):
 st.markdown("# 🧬 AutoDock Vina 1.2.7")
 st.markdown(
     "Molecular docking powered by **AutoDock Vina 1.2.7**, **RDKit**, **Meeko**, and **OpenBabel**. "
-    "**Basic** — single ligand. **Batch** — multiple ligands."
+    "**Basic** - single ligand. **Batch** - multiple ligands."
 )
 if VINA_PATH is None:
     st.error(f"❌ Could not download Vina binary: {_vina_err}")
@@ -426,13 +426,13 @@ st.markdown('<hr class="step-divider">', unsafe_allow_html=True)
 #  TABS
 # ══════════════════════════════════════════════════════════════════════════════
 tab_basic, tab_batch = st.tabs([
-    "🧪  Basic — single ligand",
-    "🔬  Batch — multiple ligands",
+    "🧪  Basic - single ligand",
+    "🔬  Batch - multiple ligands",
 ])
 
 
 # ╔════════════════════════════════════════════════════════════════════════════╗
-#  TAB 1 — BASIC DOCKING
+#  TAB 1 - BASIC DOCKING
 # ╚════════════════════════════════════════════════════════════════════════════╝
 with tab_basic:
 
@@ -634,7 +634,7 @@ with tab_basic:
                 f'<div class="score-best">{best:.2f} '
                 f'<span class="score-unit">kcal/mol</span></div>'
                 f'<div style="color:#8b949e;font-size:0.9rem;margin-bottom:12px">'
-                f'Best pose — {cls} predicted binding</div>',
+                f'Best pose - {cls} predicted binding</div>',
                 unsafe_allow_html=True)
 
     st.markdown('</div>', unsafe_allow_html=True)
@@ -763,7 +763,7 @@ with tab_basic:
 
 
 # ╔════════════════════════════════════════════════════════════════════════════╗
-#  TAB 2 — BATCH DOCKING
+#  TAB 2 - BATCH DOCKING
 # ╚════════════════════════════════════════════════════════════════════════════╝
 with tab_batch:
 
@@ -949,7 +949,7 @@ with tab_batch:
                         redock_score = rd_top
                         st.success(f"✓ Reference score: **{redock_score:.2f} kcal/mol** ({rd_nm})")
                     else:
-                        st.warning("⚠ Redocking failed — no score returned")
+                        st.warning("⚠ Redocking failed - no score returned")
                 else:
                     st.warning(f"⚠ Reference ligand prep failed: {rd_err}")
 
@@ -986,7 +986,7 @@ with tab_batch:
                              "out_sdf": out_sdf, "Status": "OK"})
 
         n_ok_final = sum(1 for r in results if r["Status"] == "OK")
-        prog.progress(1.0, text=f"✓ Done — {n_ok_final}/{n} ligands docked successfully")
+        prog.progress(1.0, text=f"✓ Done - {n_ok_final}/{n} ligands docked successfully")
         log_slot.empty()
         st.session_state.update({
             "b_batch_done": True,
@@ -1157,7 +1157,7 @@ st.markdown(
     'Eberhardt et al. J. Chem. Inf. Model. 2021, 61, 3891–3898 &nbsp;·&nbsp; '
     '<a href="https://pubs.acs.org/doi/10.1021/acs.jcim.5c02852" target="_blank" '
     'style="color:#58a6ff;text-decoration:none;">'
-    'DFDD — Hengphasatporn et al. J. Chem. Inf. Model. 2026</a>'
+    'DFDD - Hengphasatporn et al. J. Chem. Inf. Model. 2026</a>'
     '</div>',
     unsafe_allow_html=True,
 )
