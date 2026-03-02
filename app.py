@@ -749,7 +749,7 @@ def _receptor_section(pfx: str, wdir: Path, step_label: str):
 st.markdown("# 🧬 Anyone can dock, everyone can do!")
 st.markdown(
     "Molecular docking powered by **AutoDock Vina 1.2.7**, **pKaNET cloud**, and **PoseView 2D interaction**."
-    "**Basic** — single ligand.  **Batch** — multiple ligands."
+    " **Basic** — single ligand.  **Batch** — multiple ligands."
 )
 if VINA_PATH is None:
     st.error(f"❌ Could not download Vina binary: {_vina_err}")
