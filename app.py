@@ -21,6 +21,36 @@ st.set_page_config(
     initial_sidebar_state="collapsed",
 )
 
+# ─── Sidebar: Anthropic API Key ───────────────────────────────────────────────
+with st.sidebar:
+    st.markdown("### 🔑 Anthropic API Key")
+    st.markdown(
+        "<small>Required for AI Interaction Analysis. "
+        "Get your key at [console.anthropic.com](https://console.anthropic.com/). "
+        "The key is stored only in your browser session and never logged.</small>",
+        unsafe_allow_html=True,
+    )
+    _env_key = os.environ.get("ANTHROPIC_API_KEY", "")
+    try:
+        _secrets_key = st.secrets.get("ANTHROPIC_API_KEY", "")
+    except Exception:
+        _secrets_key = ""
+
+    if _env_key or _secrets_key:
+        st.success("✅ API key loaded from environment / secrets", icon="🔐")
+    else:
+        _entered = st.text_input(
+            "Paste your API key (sk-ant-…)",
+            type="password",
+            key="_anthropic_api_key_widget",
+            placeholder="sk-ant-api03-…",
+        )
+        if _entered:
+            st.session_state["_anthropic_api_key"] = _entered
+            st.success("✅ Key saved for this session", icon="🔑")
+        else:
+            st.info("Enter your key above to enable AI analysis.")
+
 # ─── Theme Helper ─────────────────────────────────────────────────────────────
 import streamlit.components.v1 as _comps
 
@@ -366,6 +396,29 @@ def _write_single_pose(mol, path: str) -> None:
 # ══════════════════════════════════════════════════════════════════════════════
 #  AI POSEVIEW ANALYSIS  (Claude claude-sonnet-4-20250514 via Anthropic API)
 # ══════════════════════════════════════════════════════════════════════════════
+def _get_anthropic_key() -> str:
+    """
+    Resolve the Anthropic API key in priority order:
+      1. Streamlit secrets  (recommended for Streamlit Cloud deployments)
+      2. Environment variable ANTHROPIC_API_KEY  (recommended for local / Docker)
+      3. Session state key entered by the user in the sidebar
+    Returns the key string, or "" if none found.
+    """
+    # 1. Streamlit secrets
+    try:
+        key = st.secrets.get("ANTHROPIC_API_KEY", "")
+        if key:
+            return key
+    except Exception:
+        pass
+    # 2. Environment variable
+    key = os.environ.get("ANTHROPIC_API_KEY", "")
+    if key:
+        return key
+    # 3. User-supplied via sidebar widget
+    return st.session_state.get("_anthropic_api_key", "")
+
+
 def _ai_analyze_poseview(
     png_data: bytes,
     pdb_id: str,
@@ -375,10 +428,19 @@ def _ai_analyze_poseview(
     ref_lig_name: str,
 ) -> str:
     """
-    Send the PoseView PNG to Claude claude-sonnet-4-20250514 with a structured
-    pharmacology prompt. Returns the analysis text (markdown).
+    Send the PoseView PNG to Claude claude-sonnet-4-20250514 via the Anthropic Messages API
+    with a structured pharmacology prompt.
+    Returns the analysis as a markdown string.
     """
     import base64, requests as _rq
+
+    api_key = _get_anthropic_key()
+    if not api_key:
+        raise ValueError(
+            "No Anthropic API key found. Enter it in the ▸ sidebar under "
+            "'🔑 Anthropic API Key', set the ANTHROPIC_API_KEY environment "
+            "variable, or add it to .streamlit/secrets.toml."
+        )
 
     energy_str = f"{binding_energy:.2f} kcal/mol" if binding_energy is not None else "N/A"
 
@@ -440,13 +502,29 @@ def _ai_analyze_poseview(
 
     resp = _rq.post(
         "https://api.anthropic.com/v1/messages",
-        headers={"Content-Type": "application/json"},
+        headers={
+            "Content-Type":      "application/json",
+            "x-api-key":         api_key,
+            "anthropic-version": "2023-06-01",
+        },
         json=payload,
         timeout=90,
     )
+
+    # Surface human-readable errors for the most common codes
+    if resp.status_code == 401:
+        raise ValueError(
+            "API key rejected (401 Unauthorized). "
+            "Check the key entered in the sidebar — it should start with 'sk-ant-'."
+        )
+    if resp.status_code == 429:
+        raise ValueError("Rate limit reached (429). Wait a moment and try again.")
+    if resp.status_code == 400:
+        detail = resp.json().get("error", {}).get("message", resp.text[:200])
+        raise ValueError(f"Bad request (400): {detail}")
     resp.raise_for_status()
+
     data = resp.json()
-    # Extract text from content blocks
     text_blocks = [b["text"] for b in data.get("content", []) if b.get("type") == "text"]
     return "\n".join(text_blocks).strip()
 
@@ -915,10 +993,11 @@ def _receptor_section(pfx: str, wdir: Path, step_label: str):
 # ══════════════════════════════════════════════════════════════════════════════
 #  HEADER
 # ══════════════════════════════════════════════════════════════════════════════
-st.markdown("# 🧬 Anyone can dock, evryone can do!")
+st.markdown("# 🧬 Anyone can dock, everyone can do!")
 st.markdown(
-    "Molecular docking powered by **AutoDock Vina 1.2.7**, **RDKit**, **Meeko**, and "
-    "**OpenBabel**.  **Basic** — single ligand.  **Batch** — multiple ligands."
+    "Molecular docking powered by **AutoDock Vina 1.2.7**, **RDKit**, **pKaNET Cloud**, and "
+    "**PoseView for 2D interaction**.  **Basic** — single ligand.  **Batch** — multiple ligands."
+    "**version 1.2**"
 )
 if VINA_PATH is None:
     st.error(f"❌ Could not download Vina binary: {_vina_err}")
