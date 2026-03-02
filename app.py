@@ -997,7 +997,6 @@ st.markdown("# 🧬 Anyone can dock, everyone can do!")
 st.markdown(
     "Molecular docking powered by **AutoDock Vina 1.2.7**, **RDKit**, **pKaNET Cloud**, and "
     "**PoseView for 2D interaction**.  **Basic** — single ligand.  **Batch** — multiple ligands."
-    "**version 1.2**"
 )
 if VINA_PATH is None:
     st.error(f"❌ Could not download Vina binary: {_vina_err}")
