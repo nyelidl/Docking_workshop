@@ -15,8 +15,8 @@ import streamlit.components.v1 as components
 
 # ─── Page Config ──────────────────────────────────────────────────────────────
 st.set_page_config(
-    page_title="AutoDock Vina 1.2.7",
-    page_icon="🧬",
+    page_title="Anyone can dock, Everyone can do!",
+    page_icon="🧩",
     layout="wide",
     initial_sidebar_state="collapsed",
 )
@@ -736,7 +736,10 @@ def _receptor_section(pfx: str, wdir: Path, step_label: str):
                 v3.addModel(open(lig_p).read(), "pdb")
                 v3.setStyle({"model": mi},
                              {"stick": {"colorscheme": "magentaCarbon", "radius": 0.25}})
-            v3.zoomTo(); v3.zoom(0.85)
+            # Zoom to full protein, then pan to ligand/grid center
+            v3.zoomTo()
+            if lig_p and os.path.exists(lig_p):
+                v3.center({"model": mi})   # pan only; zoom unchanged
             show3d(v3, height=480)
 
     st.markdown('</div>', unsafe_allow_html=True)
@@ -746,8 +749,8 @@ def _receptor_section(pfx: str, wdir: Path, step_label: str):
 # ══════════════════════════════════════════════════════════════════════════════
 #  HEADER
 # ══════════════════════════════════════════════════════════════════════════════
-st.markdown("# 🧬 Anyone can dock, everyone can do!")
-st.markdown("Molecular docking powered by **AutoDock Vina 1.2.7**, **pKaNET cloud**, and **PoseView 2D interaction**.")
+st.markdown("# 🧩 Anyone can dock, everyone can do!")
+st.markdown("Molecular docking powered by **AutoDock Vina 1.2.7**, **pKaNET Cloud**, and **PoseView 2D interaction**")
 st.markdown("**Basic** — single ligand.  **Batch** — multiple ligands.")
 if VINA_PATH is None:
     st.error(f"❌ Could not download Vina binary: {_vina_err}")
@@ -1065,7 +1068,16 @@ with tab_basic:
             va.addModelsAsFrames(sdf_txt)
             va.setStyle({"model": mai}, {"stick": {"colorscheme": "greenCarbon", "radius": 0.25}})
             va.animate({"interval": anim_spd, "loop": "forward"})
-            va.zoomTo(); va.zoom(0.85); va.rotate(30)
+            # Show surface on binding-pocket residues (within 5 Å of any docked pose)
+            va.addSurface("SES",
+                {"opacity": 0.18, "color": "lightblue"},
+                {"model": 0},           # receptor model
+                {"model": mai},         # near docked ligand
+            )
+            # Zoom to whole protein, then pan to the docked ligand
+            va.zoomTo()
+            va.center({"model": mai})
+            va.rotate(30)
             show3d(va, height=440)
 
         st.markdown("---")
@@ -1102,7 +1114,16 @@ with tab_basic:
                     v2.addModel(Chem.MolToMolBlock(sel_mol), "mol")
                     v2.setStyle({"model": mi2},
                                  {"stick": {"colorscheme": "cyanCarbon", "radius": 0.28}})
-                    v2.zoomTo(); show3d(v2, height=400)
+                    # Pocket surface on receptor residues near the selected pose
+                    v2.addSurface("SES",
+                        {"opacity": 0.2, "color": "lightblue"},
+                        {"model": 0},
+                        {"model": mi2},
+                    )
+                    # Zoom to whole protein, then pan to selected docked pose
+                    v2.zoomTo()
+                    v2.center({"model": mi2})
+                    show3d(v2, height=400)
                 except Exception as e:
                     st.info(f"Viewer error: {e}")
 
@@ -1547,7 +1568,16 @@ with tab_batch:
                         vb.addModel(Chem.MolToMolBlock(b_mols[b_pose_i]), "mol")
                         vb.setStyle({"model": bmi},
                                      {"stick": {"colorscheme": "cyanCarbon", "radius": 0.28}})
-                        vb.zoomTo(); show3d(vb, height=420)
+                        # Pocket surface on receptor residues near the docked pose
+                        vb.addSurface("SES",
+                            {"opacity": 0.2, "color": "lightblue"},
+                            {"model": 0},
+                            {"model": bmi},
+                        )
+                        # Zoom to whole protein, then pan to docked pose
+                        vb.zoomTo()
+                        vb.center({"model": bmi})
+                        show3d(vb, height=420)
                     except Exception as e:
                         st.info(f"Viewer error: {e}")
 
