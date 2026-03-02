@@ -21,36 +21,6 @@ st.set_page_config(
     initial_sidebar_state="collapsed",
 )
 
-# ─── Sidebar: Anthropic API Key ───────────────────────────────────────────────
-with st.sidebar:
-    st.markdown("### 🔑 Anthropic API Key")
-    st.markdown(
-        "<small>Required for AI Interaction Analysis. "
-        "Get your key at [console.anthropic.com](https://console.anthropic.com/). "
-        "The key is stored only in your browser session and never logged.</small>",
-        unsafe_allow_html=True,
-    )
-    _env_key = os.environ.get("ANTHROPIC_API_KEY", "")
-    try:
-        _secrets_key = st.secrets.get("ANTHROPIC_API_KEY", "")
-    except Exception:
-        _secrets_key = ""
-
-    if _env_key or _secrets_key:
-        st.success("✅ API key loaded from environment / secrets", icon="🔐")
-    else:
-        _entered = st.text_input(
-            "Paste your API key (sk-ant-…)",
-            type="password",
-            key="_anthropic_api_key_widget",
-            placeholder="sk-ant-api03-…",
-        )
-        if _entered:
-            st.session_state["_anthropic_api_key"] = _entered
-            st.success("✅ Key saved for this session", icon="🔑")
-        else:
-            st.info("Enter your key above to enable AI analysis.")
-
 # ─── Theme Helper ─────────────────────────────────────────────────────────────
 import streamlit.components.v1 as _comps
 
@@ -399,10 +369,9 @@ def _write_single_pose(mol, path: str) -> None:
 def _get_anthropic_key() -> str:
     """
     Resolve the Anthropic API key in priority order:
-      1. Streamlit secrets  (recommended for Streamlit Cloud deployments)
-      2. Environment variable ANTHROPIC_API_KEY  (recommended for local / Docker)
-      3. Session state key entered by the user in the sidebar
-    Returns the key string, or "" if none found.
+      1. Streamlit secrets  (.streamlit/secrets.toml)
+      2. Environment variable ANTHROPIC_API_KEY
+      3. Session state — either the widget key or the manually assigned key
     """
     # 1. Streamlit secrets
     try:
@@ -415,7 +384,11 @@ def _get_anthropic_key() -> str:
     key = os.environ.get("ANTHROPIC_API_KEY", "")
     if key:
         return key
-    # 3. User-supplied via sidebar widget
+    # 3a. Widget stores value directly under its own key
+    key = st.session_state.get("_anthropic_api_key_widget", "")
+    if key:
+        return key
+    # 3b. Manually copied value (fallback)
     return st.session_state.get("_anthropic_api_key", "")
 
 
@@ -719,9 +692,16 @@ def _poseview_ui(
         st.markdown("---")
         st.markdown("**🤖 AI Interaction Analysis**")
 
+        _has_key = bool(_get_anthropic_key())
         _ai_col_info, _ai_col_btn = st.columns([3, 1])
         with _ai_col_info:
-            if _ai_stale and st.session_state.get(ai_analysis_key):
+            if not _has_key:
+                st.warning(
+                    "Enter your Anthropic API key in the **🔑 Key** box above the tabs "
+                    "to enable AI analysis.",
+                    icon="🔑",
+                )
+            elif _ai_stale and st.session_state.get(ai_analysis_key):
                 st.caption("⚠️ Diagram updated — regenerate analysis to match current pose.")
             else:
                 st.caption(
@@ -731,8 +711,12 @@ def _poseview_ui(
                     "and binding-energy assessment."
                 )
         with _ai_col_btn:
-            _run_ai = st.button("🧠 Analyse with AI",
-                                key=f"btn_ai_{btn_key}", type="primary")
+            _run_ai = st.button(
+                "🧠 Analyse with AI",
+                key=f"btn_ai_{btn_key}",
+                type="primary",
+                disabled=not _has_key,
+            )
 
         if _run_ai:
             if not _png_data:
@@ -993,16 +977,45 @@ def _receptor_section(pfx: str, wdir: Path, step_label: str):
 # ══════════════════════════════════════════════════════════════════════════════
 #  HEADER
 # ══════════════════════════════════════════════════════════════════════════════
-st.markdown("# 🧬 Anyone can dock, everyone can do!")
+st.markdown("# 🧬 Anyone can do, everyone can dock!")
 st.markdown(
-    "Molecular docking powered by **AutoDock Vina 1.2.7**, **RDKit**, **pKaNET Cloud**, and "
-    "**PoseView for 2D interaction**.  **Basic** — single ligand.  **Batch** — multiple ligands."
+    "Molecular docking powered by **AutoDock Vina 1.2.7**, **pKaNET Cloud**, **PosView for 2D interaction**, and "
+    "**OpenBabel**.  **Basic** — single ligand.  **Batch** — multiple ligands."
 )
 if VINA_PATH is None:
     st.error(f"❌ Could not download Vina binary: {_vina_err}")
     st.stop()
 
 st.markdown(_pill("Vina 1.2.7 ready ✓", "success"), unsafe_allow_html=True)
+
+# ─── Anthropic API Key (always visible) ──────────────────────────────────────
+_env_key = os.environ.get("ANTHROPIC_API_KEY", "")
+try:    _secrets_key = st.secrets.get("ANTHROPIC_API_KEY", "")
+except: _secrets_key = ""
+
+if _env_key or _secrets_key:
+    st.markdown(
+        _pill("🔑 Anthropic API key loaded from environment ✓", "success"),
+        unsafe_allow_html=True,
+    )
+else:
+    with st.expander("🔑 Anthropic API Key — required for AI Interaction Analysis", expanded=not bool(st.session_state.get("_anthropic_api_key_widget"))):
+        st.caption(
+            "Enter your key from [console.anthropic.com](https://console.anthropic.com/). "
+            "It is stored only in your browser session and never sent anywhere except the Anthropic API."
+        )
+        st.text_input(
+            "API Key",
+            type="password",
+            key="_anthropic_api_key_widget",
+            placeholder="sk-ant-api03-…",
+            label_visibility="collapsed",
+        )
+        if st.session_state.get("_anthropic_api_key_widget"):
+            st.success("✅ Key ready — AI analysis is enabled.")
+        else:
+            st.warning("⚠️ No key entered. The **🧠 Analyse with AI** button will be disabled.")
+
 st.markdown('<hr class="step-divider">', unsafe_allow_html=True)
 
 
