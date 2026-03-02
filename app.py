@@ -508,6 +508,26 @@ def _poseview_ui(
         with _dc3:
             st.caption("💡 SVG is vector — scalable for publications. PNG for quick use.")
 
+        # ── AI Prompt for manual use ──────────────────────────────────────────
+        st.markdown("---")
+        st.markdown(
+            f"""### 🤖 AI Prompt for PoseView Interpretation
+
+Copy and paste the prompt below into any AI tool (GPT, Claude, Gemini, DeepSeek, etc.) together with the PoseView figure.
+
+**Task:**  
+Analyze the attached **Proteins.Plus PoseView interaction diagram** for **PDB ID [____]**, docked ligand **[____]**, generated using **AutoDock Vina v1.2.7** with predicted binding energy **[____ kcal/mol]**, and compare with the **co-crystallized reference ligand [____]** in the same binding pocket.
+
+1. Identify key ligand–protein interactions (hydrogen bonds, hydrophobic contacts, π–π interactions, salt bridges, etc.).
+2. List the main interacting residues and describe their roles in stabilizing the ligand.
+3. Compare the docking pose with the reference ligand in the same pocket.
+4. Highlight similarities or differences in binding orientation and interaction patterns.
+5. Evaluate whether the interaction profile supports the predicted binding energy.
+
+Provide a **concise structural interpretation of the binding mode**.
+"""
+        )
+
 
 # ══════════════════════════════════════════════════════════════════════════════
 #  VINA BINARY + pKa MODEL
@@ -726,10 +746,10 @@ def _receptor_section(pfx: str, wdir: Path, step_label: str):
 # ══════════════════════════════════════════════════════════════════════════════
 #  HEADER
 # ══════════════════════════════════════════════════════════════════════════════
-st.markdown("# 🧬 AutoDock Vina 1.2.7")
+st.markdown("# 🧬 Anyone can dock, everyone can do!")
 st.markdown(
-    "Molecular docking powered by **AutoDock Vina 1.2.7**, **RDKit**, **Meeko**, and "
-    "**OpenBabel**.  **Basic** — single ligand.  **Batch** — multiple ligands."
+    "Molecular docking powered by **AutoDock Vina 1.2.7**, **pKaNET cloud**, and **PoseView 2D interaction**."
+    "**Basic** — single ligand.  **Batch** — multiple ligands."
 )
 if VINA_PATH is None:
     st.error(f"❌ Could not download Vina binary: {_vina_err}")
