@@ -915,7 +915,7 @@ def _receptor_section(pfx: str, wdir: Path, step_label: str):
 # ══════════════════════════════════════════════════════════════════════════════
 #  HEADER
 # ══════════════════════════════════════════════════════════════════════════════
-st.markdown("# 🧬 AutoDock Vina 1.2.7")
+st.markdown("# 🧬 Anyone can dock, evryone can do!")
 st.markdown(
     "Molecular docking powered by **AutoDock Vina 1.2.7**, **RDKit**, **Meeko**, and "
     "**OpenBabel**.  **Basic** — single ligand.  **Batch** — multiple ligands."
