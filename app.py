@@ -7,6 +7,7 @@ Bond-order correction applied automatically before PoseView submission.
 
 import streamlit as st
 import os, sys, subprocess, tempfile, io, zipfile, re as _re
+import shutil
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -38,6 +39,89 @@ def _chart_colors():
 
 def _viewer_bg():
     return _chart_colors()["bg"]
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+#  PDB / MOL2 / SDF → canonical SMILES via obabel
+#  Used in both the live upload preview and the batch docking parser.
+# ══════════════════════════════════════════════════════════════════════════════
+
+def pdb_to_canonical_smiles(file_bytes: bytes, filename: str) -> tuple:
+    """
+    Convert any structure file (PDB, MOL2, SDF) to a list of
+    (smiles, name) pairs using Open Babel:
+
+        obabel input.ext -O output.smi --canonical
+
+    Parameters
+    ----------
+    file_bytes : raw bytes of the uploaded file
+    filename   : original filename (used to preserve the extension so
+                 obabel can auto-detect the format)
+
+    Returns
+    -------
+    (pairs, error_message)
+        pairs         – list of (smiles_str, name_str), empty on failure
+        error_message – None on success, descriptive string on failure
+    """
+    if shutil.which("obabel") is None:
+        return [], (
+            "Open Babel (obabel) not found in PATH. "
+            "Install via: conda install -c conda-forge openbabel"
+        )
+    try:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            tmp      = Path(tmp_dir)
+            stem     = Path(filename).stem
+            ext      = Path(filename).suffix.lower()          # e.g. ".pdb"
+            in_file  = tmp / f"input{ext}"
+            smi_file = tmp / "output.smi"
+
+            in_file.write_bytes(file_bytes)
+
+            result = subprocess.run(
+                ["obabel", str(in_file), "-O", str(smi_file), "--canonical"],
+                capture_output=True,
+                text=True,
+                timeout=60,
+            )
+
+            if not smi_file.exists() or smi_file.stat().st_size == 0:
+                stderr = result.stderr.strip()
+                return [], (
+                    f"obabel produced no output. "
+                    f"stderr: {stderr or '(none)'}"
+                )
+
+            # obabel .smi format: "<SMILES>\t<name>" per molecule
+            pairs = []
+            for i, line in enumerate(
+                smi_file.read_text(encoding="utf-8", errors="replace").splitlines()
+            ):
+                line = line.strip()
+                if not line:
+                    continue
+                parts = line.split(None, 1)
+                smi   = parts[0].strip()
+                name  = (
+                    parts[1].strip().replace(" ", "_")
+                    if len(parts) > 1 and parts[1].strip()
+                    else f"{stem}_{i+1:03d}"
+                )
+                if smi:
+                    pairs.append((smi, name))
+
+            if not pairs:
+                return [], "obabel ran but produced no SMILES lines."
+
+            return pairs, None
+
+    except subprocess.TimeoutExpired:
+        return [], "obabel conversion timed out (>60 s)."
+    except Exception as exc:
+        return [], f"Unexpected error during structure→SMILES conversion: {exc}"
+
 
 # ─── Global CSS ───────────────────────────────────────────────────────────────
 st.markdown("""
@@ -211,6 +295,10 @@ _DEFAULTS = dict(
     b_confirmed_ref_score=None, b_confirmed_ref_pose=None, b_confirmed_ref_name=None,
     # Batch — PoseView
     b_pv_image_url=None, b_pv_image_png=None, b_pv_image_svg=None, b_pv_pose_key=None,
+    # Batch — uploaded structure preview
+    b_struct_smiles_pairs=None, b_struct_filename=None,
+    # Batch — downloadable assets
+    b_plot_png=None,
 )
 for k, v in _DEFAULTS.items():
     if k not in st.session_state:
@@ -272,18 +360,8 @@ def _meeko_to_pdbqt(mol, out_path):
 
 # ══════════════════════════════════════════════════════════════════════════════
 #  BOND ORDER CORRECTION
-#  PDBQT strips all bond orders; obabel reconstructs them heuristically.
-#  For conjugated/aromatic systems (flavones, purines, etc.) this is often
-#  wrong.  We fix it by grafting bond orders from the reference SMILES onto
-#  the docked 3-D geometry using AssignBondOrdersFromTemplate.
 # ══════════════════════════════════════════════════════════════════════════════
 def _bo_template(smiles: str):
-    """
-    Build a kekulised template from SMILES.
-    AssignBondOrdersFromTemplate requires explicit SINGLE/DOUBLE/TRIPLE
-    bonds on the template side — NOT the AROMATIC bond type — otherwise
-    fused ring systems (chromone, purine, indole …) raise a RuntimeError.
-    """
     from rdkit import Chem
     mol = Chem.MolFromSmiles(smiles)
     if mol is None:
@@ -293,13 +371,8 @@ def _bo_template(smiles: str):
 
 
 def _bo_fix_mol(probe, template):
-    """
-    Assign bond orders from *template* onto *probe* (docked, all-single-bond
-    geometry).  Preserves 3-D coordinates and all SD-tag properties.
-    """
     from rdkit import Chem
     from rdkit.Chem import AllChem
-    # Strip explicit Hs added by obabel — they break the heavy-atom count match
     probe_noH = Chem.RemoveHs(probe, sanitize=False)
     try:
         fixed = AllChem.AssignBondOrdersFromTemplate(template, probe_noH)
@@ -308,26 +381,20 @@ def _bo_fix_mol(probe, template):
             f"AssignBondOrdersFromTemplate failed (atom/connectivity mismatch): {exc}"
         ) from exc
     Chem.SanitizeMol(fixed)
-    # Carry over all SD properties (Vina score, RMSD, pose number …)
     for prop in probe.GetPropsAsDict():
         fixed.SetProp(prop, probe.GetProp(prop))
     return fixed
 
 
 def _fix_sdf_bond_orders(raw_sdf: str, smiles: str, fixed_sdf: str) -> list[str]:
-    """
-    Read every pose from *raw_sdf*, fix bond orders, write to *fixed_sdf*.
-    Returns a list of log lines.  Falls back to raw molecule on per-pose error.
-    """
     from rdkit import Chem
     log = []
     try:
         template = _bo_template(smiles)
     except Exception as e:
         log.append(f"⚠ Could not build template: {e} — skipping fix")
-        # Copy raw SDF verbatim as fallback
-        import shutil
-        shutil.copy(raw_sdf, fixed_sdf)
+        import shutil as _sh
+        _sh.copy(raw_sdf, fixed_sdf)
         return log
 
     supplier  = Chem.SDMolSupplier(raw_sdf, sanitize=False, removeHs=False)
@@ -342,7 +409,6 @@ def _fix_sdf_bond_orders(raw_sdf: str, smiles: str, fixed_sdf: str) -> list[str]
             writer.write(fixed); n_ok += 1
         except Exception as e:
             log.append(f"  pose {i+1}: fix failed ({e}) — writing raw"); n_fail += 1
-            # Write raw mol (still usable for 3-D viewer, just wrong 2-D diagram)
             writer.write(Chem.RemoveHs(mol, sanitize=False))
     writer.close()
     log.insert(0, f"✓ Bond-order fix: {n_ok} OK, {n_fail} fallback")
@@ -350,7 +416,6 @@ def _fix_sdf_bond_orders(raw_sdf: str, smiles: str, fixed_sdf: str) -> list[str]
 
 
 def _load_pv_mols(pv_sdf: str):
-    """Load fixed-SDF poses with full sanitisation (safe after bond-order fix)."""
     from rdkit import Chem
     return [m for m in Chem.SDMolSupplier(pv_sdf, sanitize=True, removeHs=False) if m]
 
@@ -362,13 +427,9 @@ def _write_single_pose(mol, path: str) -> None:
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-#  AI POSEVIEW ANALYSIS  (Claude claude-sonnet-4-20250514 via Anthropic API)
-
-# ══════════════════════════════════════════════════════════════════════════════
 #  POSEVIEW HELPERS
 # ══════════════════════════════════════════════════════════════════════════════
 def _call_poseview(receptor_pdb: str, pose_sdf: str):
-    """Submit to proteins.plus PoseView API. Returns (image_url, error)."""
     import requests, time
     _BASE   = "https://proteins.plus/api/v2/"
     _SUBMIT = _BASE + "poseview/"
@@ -403,16 +464,6 @@ def _svg_to_png(svg_bytes: bytes):
         return None
 
 
-# PoseView legend (base64-embedded PNG)
-_POSEVIEW_LEGEND_B64 = (
-    "/9j/4AAQSkZJRgABAQAAAQABAAD/4gHYSUNDX1BST0ZJTEUAAQEAAAHIAAAAAAQwAABtbnRyUkdC"
-    "IFhZWiAH4AABAAEAAAAAAABhY3NwAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAQAA9tYAAQAAAADT"
-    "LQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
-    "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
-    "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
-    "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
-)
-
 def _show_poseview_image(png_data, url, caption):
     import base64 as _b64
     img_src = (f"data:image/png;base64,{_b64.b64encode(png_data).decode()}"
@@ -429,22 +480,11 @@ def _show_poseview_image(png_data, url, caption):
 
 
 def _poseview_ui(
-    rec_key: str,
-    raw_sdf_key: str,
-    pv_sdf_key: str,
-    smiles_key: str,
-    pose_idx: int,
-    pose_sdf_path: str,
-    img_url_key: str,
-    img_png_key: str,
-    img_svg_key: str,
-    pose_key_key: str,
-    btn_key: str,
-    dl_png_key: str,
-    dl_svg_key: str,
-    label_suffix: str = "",
+    rec_key, raw_sdf_key, pv_sdf_key, smiles_key,
+    pose_idx, pose_sdf_path,
+    img_url_key, img_png_key, img_svg_key, pose_key_key,
+    btn_key, dl_png_key, dl_svg_key, label_suffix="",
 ):
-    """Reusable PoseView block."""
     _pose_key = f"{st.session_state.get(smiles_key, 'lig')}_pose{pose_idx+1}{label_suffix}"
     _pv_stale = st.session_state.get(pose_key_key) != _pose_key
 
@@ -508,7 +548,6 @@ def _poseview_ui(
         with _dc3:
             st.caption("💡 SVG is vector — scalable for publications. PNG for quick use.")
 
-        # ── AI Prompt for manual use ──────────────────────────────────────────
         st.markdown("---")
         st.markdown(
             f"""### 🤖 AI Prompt for PoseView Interpretation
@@ -555,7 +594,6 @@ def _get_pka_model():
 VINA_PATH, _vina_err = _get_vina()
 PKA_MODEL             = _get_pka_model()
 
-# ─── Ligand exclusion lists ───────────────────────────────────────────────────
 _EXCLUDE_IONS   = set("HOH,WAT,DOD,SOL,NA,CL,K,CA,MG,ZN,MN,FE,CU,CO,NI,CD,HG".split(","))
 _GLYCAN_NAMES   = {"NAG","BMA","MAN","FUC","GAL","GLC","SIA","NGA","FUL","GLA","BGC"}
 _COFACTOR_NAMES = {"ATP","ADP","AMP","GTP","GDP","FAD","FMN","HEM","GOL","PEG","EDO","SO4","PO4"}
@@ -736,10 +774,9 @@ def _receptor_section(pfx: str, wdir: Path, step_label: str):
                 v3.addModel(open(lig_p).read(), "pdb")
                 v3.setStyle({"model": mi},
                              {"stick": {"colorscheme": "magentaCarbon", "radius": 0.25}})
-            # Zoom to full protein, then pan to ligand/grid center
             v3.zoomTo()
             if lig_p and os.path.exists(lig_p):
-                v3.center({"model": mi})   # pan only; zoom unchanged
+                v3.center({"model": mi})
             show3d(v3, height=480)
 
     st.markdown('</div>', unsafe_allow_html=True)
@@ -757,7 +794,6 @@ if VINA_PATH is None:
     st.stop()
 
 st.markdown(_pill("Vina 1.2.7 ready ✓", "success"), unsafe_allow_html=True)
-
 st.markdown('<hr class="step-divider">', unsafe_allow_html=True)
 
 
@@ -771,14 +807,12 @@ tab_basic, tab_batch = st.tabs([
 
 
 # ╔════════════════════════════════════════════════════════════════════════════╗
-#  TAB 1 — BASIC DOCKING
+#  TAB 1 — BASIC DOCKING  (unchanged)
 # ╚════════════════════════════════════════════════════════════════════════════╝
 with tab_basic:
 
-    # ── Step 1: Receptor ──────────────────────────────────────────────────────
     _receptor_section(pfx="", wdir=WORKDIR, step_label="Step 1 of 4")
 
-    # ── Step 2: Ligand ────────────────────────────────────────────────────────
     card_cls = "step-card done" if st.session_state.ligand_done else "step-card"
     st.markdown(
         f'<div class="{card_cls}"><div class="step-title">Step 2 of 4</div>'
@@ -893,7 +927,6 @@ with tab_basic:
     st.markdown('</div>', unsafe_allow_html=True)
     st.markdown('<hr class="step-divider">', unsafe_allow_html=True)
 
-    # ── Step 3: Docking ───────────────────────────────────────────────────────
     card_cls = "step-card done" if st.session_state.docking_done else "step-card"
     st.markdown(
         f'<div class="{card_cls}"><div class="step-title">Step 3 of 4</div>'
@@ -937,18 +970,13 @@ with tab_basic:
                 st.error(f"❌ Vina failed (exit {rc})\n{vlog[:500]}")
                 st.session_state.docking_done = False
             else:
-                # Raw SDF from obabel (all-single-bond — used for 3-D viewer)
                 run_cmd(f'obabel "{out_pdbqt}" -O "{out_sdf}" 2>/dev/null')
-
-                # ── Bond-order-corrected SDF for PoseView ────────────────────
                 pv_log = _fix_sdf_bond_orders(
                     out_sdf, st.session_state.prot_smiles, pv_sdf)
                 vlog += "\n\n── Bond-order fix ──\n" + "\n".join(pv_log)
-                # Fall back to raw SDF if correction produced nothing
                 if not os.path.exists(pv_sdf) or os.path.getsize(pv_sdf) < 10:
                     pv_sdf = out_sdf
 
-                # Parse scores from PDBQT
                 data = []; cur = None
                 for line in open(out_pdbqt):
                     ln = line.strip()
@@ -967,9 +995,6 @@ with tab_basic:
                       .sort_values("Affinity (kcal/mol)")
                       .reset_index(drop=True)) if data else None
 
-                # Load pose molecules:
-                # • 3-D viewer: raw SDF with sanitize=False (tolerates broken valences)
-                # • PoseView:   fixed SDF with sanitize=True
                 from rdkit import Chem
                 mols = ([m for m in Chem.SDMolSupplier(out_sdf, sanitize=False) if m]
                         if os.path.exists(out_sdf) else [])
@@ -979,7 +1004,6 @@ with tab_basic:
                     output_pv_sdf=pv_sdf,   dock_base=base,
                     docking_done=True,       docking_log=vlog,
                     score_df=df,             pose_mols=mols,
-                    # Invalidate any cached PoseView image
                     pv_image_url=None, pv_image_png=None,
                     pv_image_svg=None, pv_pose_key=None,
                 ))
@@ -1003,7 +1027,6 @@ with tab_basic:
     st.markdown('</div>', unsafe_allow_html=True)
     st.markdown('<hr class="step-divider">', unsafe_allow_html=True)
 
-    # ── Step 4: Results ───────────────────────────────────────────────────────
     card_cls = "step-card done" if st.session_state.docking_done else "step-card"
     st.markdown(
         f'<div class="{card_cls}"><div class="step-title">Step 4 of 4</div>'
@@ -1018,7 +1041,6 @@ with tab_basic:
         df   = st.session_state.score_df
         mols = st.session_state.pose_mols or []
 
-        # Score table + bar chart
         ct, cc = st.columns([1, 1.4])
         with ct:
             st.markdown("**Score Table**")
@@ -1047,8 +1069,6 @@ with tab_basic:
                 st.pyplot(fig, use_container_width=True); plt.close(fig)
 
         st.markdown("---")
-
-        # Animated viewer
         st.markdown("**🎬 Animated Pose Viewer**")
         anim_spd = st.slider("Interval (ms)", 500, 3000, 1500, 250, key="anim_spd")
         if st.session_state.output_sdf and os.path.exists(st.session_state.output_sdf):
@@ -1068,21 +1088,12 @@ with tab_basic:
             va.addModelsAsFrames(sdf_txt)
             va.setStyle({"model": mai}, {"stick": {"colorscheme": "greenCarbon", "radius": 0.25}})
             va.animate({"interval": anim_spd, "loop": "forward"})
-            # Show surface on binding-pocket residues (within 5 Å of any docked pose)
-            va.addSurface("SES",
-                {"opacity": 0.18, "color": "lightblue"},
-                {"model": 0},           # receptor model
-                {"model": mai},         # near docked ligand
-            )
-            # Zoom to whole protein, then pan to the docked ligand
-            va.zoomTo()
-            va.center({"model": mai})
-            va.rotate(30)
+            va.addSurface("SES", {"opacity": 0.18, "color": "lightblue"},
+                          {"model": 0}, {"model": mai})
+            va.zoomTo(); va.center({"model": mai}); va.rotate(30)
             show3d(va, height=440)
 
         st.markdown("---")
-
-        # Interactive pose selector
         st.markdown("**🔎 Interactive Pose Selector**")
         if mols:
             pose_idx = st.slider("Select pose", 1, len(mols), 1, key="pose_sel") - 1
@@ -1114,27 +1125,19 @@ with tab_basic:
                     v2.addModel(Chem.MolToMolBlock(sel_mol), "mol")
                     v2.setStyle({"model": mi2},
                                  {"stick": {"colorscheme": "cyanCarbon", "radius": 0.28}})
-                    # Pocket surface on receptor residues near the selected pose
-                    v2.addSurface("SES",
-                        {"opacity": 0.2, "color": "lightblue"},
-                        {"model": 0},
-                        {"model": mi2},
-                    )
-                    # Zoom to whole protein, then pan to selected docked pose
-                    v2.zoomTo()
-                    v2.center({"model": mi2})
+                    v2.addSurface("SES", {"opacity": 0.2, "color": "lightblue"},
+                                  {"model": 0}, {"model": mi2})
+                    v2.zoomTo(); v2.center({"model": mi2})
                     show3d(v2, height=400)
                 except Exception as e:
                     st.info(f"Viewer error: {e}")
 
             with cdl:
                 st.markdown("**Download**")
-                # Raw pose (3-D coords, broken bond orders — for Vina/tools)
                 sp_raw = str(WORKDIR / f"pose_{pose_idx+1}_raw.sdf")
                 _write_single_pose(sel_mol, sp_raw)
                 st.download_button(f"⬇ Pose {pose_idx+1} (.sdf)", open(sp_raw, "rb"),
                     file_name=f"pose_{pose_idx+1}.sdf", key=f"dl_p_{pose_idx}")
-
                 st.download_button("⬇ All poses (.pdbqt)",
                     open(st.session_state.output_pdbqt, "rb"),
                     file_name=f"{st.session_state.dock_base}_out.pdbqt", key="dl_pdbqt")
@@ -1148,8 +1151,6 @@ with tab_basic:
                         open(st.session_state.receptor_fh, "rb"),
                         file_name="receptor.pdb", key="dl_rec")
 
-            # ── PoseView 2D Interaction ───────────────────────────────────────
-            # Write the BOND-ORDER-FIXED single pose for PoseView submission
             pv_sdf_all = st.session_state.get("output_pv_sdf", "")
             sp_pv      = str(WORKDIR / f"pose_{pose_idx+1}_pv_ready.sdf")
             if pv_sdf_all and os.path.exists(pv_sdf_all):
@@ -1157,26 +1158,18 @@ with tab_basic:
                 if pv_mols_all and pose_idx < len(pv_mols_all):
                     _write_single_pose(pv_mols_all[pose_idx], sp_pv)
                 else:
-                    # fallback: use raw mol
                     _write_single_pose(sel_mol, sp_pv)
             else:
                 _write_single_pose(sel_mol, sp_pv)
 
             _poseview_ui(
-                rec_key       = "receptor_fh",
-                raw_sdf_key   = "output_sdf",
-                pv_sdf_key    = "output_pv_sdf",
-                smiles_key    = "ligand_name",
-                pose_idx      = pose_idx,
-                pose_sdf_path = sp_pv,
-                img_url_key   = "pv_image_url",
-                img_png_key   = "pv_image_png",
-                img_svg_key   = "pv_image_svg",
-                pose_key_key  = "pv_pose_key",
-                btn_key       = "btn_pv_basic",
-                dl_png_key    = "dl_pv_png_basic",
-                dl_svg_key    = "dl_pv_svg_basic",
-                label_suffix  = "_basic",
+                rec_key="receptor_fh", raw_sdf_key="output_sdf",
+                pv_sdf_key="output_pv_sdf", smiles_key="ligand_name",
+                pose_idx=pose_idx, pose_sdf_path=sp_pv,
+                img_url_key="pv_image_url", img_png_key="pv_image_png",
+                img_svg_key="pv_image_svg", pose_key_key="pv_pose_key",
+                btn_key="btn_pv_basic", dl_png_key="dl_pv_png_basic",
+                dl_svg_key="dl_pv_svg_basic", label_suffix="_basic",
             )
 
     st.markdown('</div>', unsafe_allow_html=True)
@@ -1187,10 +1180,8 @@ with tab_basic:
 # ╚════════════════════════════════════════════════════════════════════════════╝
 with tab_batch:
 
-    # Step B1: Receptor
     _receptor_section(pfx="b_", wdir=BATCH_WORKDIR, step_label="Step B1 of B3")
 
-    # ── Step B2: Ligand Input + Run ───────────────────────────────────────────
     b_rec_done   = st.session_state.get("b_receptor_done", False)
     b_batch_done = st.session_state.get("b_batch_done", False)
     card_cls = "step-card done" if b_batch_done else "step-card"
@@ -1204,6 +1195,7 @@ with tab_batch:
         b_input_mode = st.radio("Input mode",
             ["SMILES list (text)", "Upload .smi file", "Upload structure (.sdf/.mol2/.pdb)"],
             key="b_input_mode")
+
         if b_input_mode == "SMILES list (text)":
             st.text_area("One `SMILES [name]` per line",
                 value=("C1=CC(=CC=C1C2=CC(=O)C3=C(C=C(C=C3O2)O)O)O Apigenin\n"
@@ -1217,11 +1209,70 @@ with tab_batch:
                        "C1=CC=C(C=C1)C2=CC(=O)C3=C(O2)C=C(C(=C3O)OC)O Galangin\n"
                        "CC1=C(C=C(C=C1)NC2=NC=NC3=C2C=CC=C3)OC Imatinib"),
                 height=300, key="b_smiles_text")
+
         elif b_input_mode == "Upload .smi file":
             st.file_uploader("Upload .smi file", type=["smi", "txt"], key="b_smi_file")
+
         else:
-            st.file_uploader("Upload structure file", type=["sdf", "mol2", "pdb"],
-                             key="b_struct_file")
+            # ── Upload structure: PDB / MOL2 / SDF ───────────────────────────
+            # Uses obabel --canonical for reliable SMILES extraction.
+            # Live preview is shown as soon as a file is uploaded.
+            b_struct_fobj = st.file_uploader(
+                "Upload structure file (.pdb, .mol2, .sdf)",
+                type=["pdb", "mol2", "sdf"],
+                key="b_struct_file",
+                help="Each molecule in the file becomes one docking ligand.",
+            )
+
+            if b_struct_fobj is not None:
+                # Re-run conversion only when a new file is uploaded
+                if st.session_state.get("b_struct_filename") != b_struct_fobj.name:
+                    file_bytes = b_struct_fobj.read()
+                    with st.spinner(f"Converting {b_struct_fobj.name} → canonical SMILES via obabel…"):
+                        pairs, conv_err = pdb_to_canonical_smiles(file_bytes, b_struct_fobj.name)
+                    if conv_err:
+                        st.error(f"❌ Structure conversion failed: {conv_err}")
+                        st.session_state["b_struct_smiles_pairs"] = None
+                    else:
+                        st.session_state["b_struct_smiles_pairs"] = pairs
+                    st.session_state["b_struct_filename"] = b_struct_fobj.name
+
+                # Show preview if conversion succeeded
+                cached_pairs = st.session_state.get("b_struct_smiles_pairs")
+                if cached_pairs:
+                    n_mols = len(cached_pairs)
+                    st.success(
+                        f"✅ Converted **{n_mols} molecule{'s' if n_mols > 1 else ''}** "
+                        f"from `{b_struct_fobj.name}` to canonical SMILES"
+                    )
+
+                    # Expandable table of extracted SMILES
+                    with st.expander(
+                        f"🔍 Preview extracted SMILES ({n_mols} molecule{'s' if n_mols > 1 else ''})",
+                        expanded=(n_mols <= 10),
+                    ):
+                        preview_df = pd.DataFrame(
+                            cached_pairs, columns=["SMILES", "Name"]
+                        )
+                        st.dataframe(preview_df, hide_index=True, use_container_width=True)
+
+                        # Optional: 2D thumbnails for small sets
+                        if n_mols <= 6:
+                            try:
+                                from rdkit import Chem
+                                from rdkit.Chem import AllChem, Draw
+                                thumb_cols = st.columns(min(n_mols, 3))
+                                for col_i, (smi, nm) in enumerate(cached_pairs[:6]):
+                                    m = Chem.MolFromSmiles(smi)
+                                    if m:
+                                        AllChem.Compute2DCoords(m)
+                                        buf = io.BytesIO()
+                                        Draw.MolToImage(m, size=(240, 180)).save(buf, format="PNG")
+                                        with thumb_cols[col_i % 3]:
+                                            st.image(buf.getvalue(), caption=nm, use_container_width=True)
+                            except Exception:
+                                pass  # 2D preview is cosmetic only
+
         b_ph     = st.number_input("Target pH", 0.0, 14.0, 7.4, 0.1, key="b_ph")
         b_stereo = st.checkbox("Enumerate stereocenters (use first isomer)", key="b_stereo")
 
@@ -1252,10 +1303,11 @@ with tab_batch:
         config    = st.session_state.get("b_config_txt")
         b_ph_val  = st.session_state.get("b_ph", 7.4)
 
-        # ── Parse SMILES ──────────────────────────────────────────────────────
+        # ── Parse ligand inputs ───────────────────────────────────────────────
         smiles_pairs = []
         try:
             mode = st.session_state.get("b_input_mode", "SMILES list (text)")
+
             if mode == "SMILES list (text)":
                 for line in st.session_state.get("b_smiles_text", "").strip().splitlines():
                     line = line.strip()
@@ -1265,6 +1317,7 @@ with tab_batch:
                         pts[0],
                         pts[1].replace(" ", "_") if len(pts) > 1 else f"lig_{len(smiles_pairs)+1}"
                     ))
+
             elif mode == "Upload .smi file":
                 fobj = st.session_state.get("b_smi_file")
                 if fobj is None: raise ValueError("No .smi file uploaded")
@@ -1276,29 +1329,22 @@ with tab_batch:
                         pts[0],
                         pts[1].replace(" ", "_") if len(pts) > 1 else f"lig_{len(smiles_pairs)+1}"
                     ))
+
             else:
-                fobj = st.session_state.get("b_struct_file")
-                if fobj is None: raise ValueError("No structure file uploaded")
-                ext = Path(fobj.name).suffix.lower()
-                tmp = str(BATCH_WORKDIR / f"input{ext}")
-                with open(tmp, "wb") as f: f.write(fobj.read())
-                if ext == ".sdf":
-                    for i, mol in enumerate(Chem.SDMolSupplier(tmp, sanitize=True)):
-                        if mol is None: continue
-                        nm = (mol.GetProp("_Name") if mol.HasProp("_Name")
-                              else f"lig_{i+1}").replace(" ", "_")
-                        smiles_pairs.append((Chem.MolToSmiles(mol), nm))
-                else:
-                    run_cmd(f'obabel "{tmp}" -O "{tmp}.smi" --gen2D 2>/dev/null')
-                    for line in open(f"{tmp}.smi"):
-                        pts = line.strip().split(None, 1)
-                        if pts:
-                            smiles_pairs.append((
-                                pts[0],
-                                pts[1].replace(" ", "_") if len(pts) > 1
-                                else f"lig_{len(smiles_pairs)+1}"
-                            ))
-            if not smiles_pairs: raise ValueError("No valid SMILES found")
+                # ── Use cached obabel conversion result ───────────────────────
+                # The preview block above already ran pdb_to_canonical_smiles()
+                # and stored the pairs in session state.
+                cached_pairs = st.session_state.get("b_struct_smiles_pairs")
+                if not cached_pairs:
+                    raise ValueError(
+                        "No structure file converted yet — please upload a PDB/MOL2/SDF file "
+                        "and wait for the SMILES preview before running docking."
+                    )
+                smiles_pairs = list(cached_pairs)
+
+            if not smiles_pairs:
+                raise ValueError("No valid SMILES found in the input.")
+
         except Exception as e:
             st.error(f"❌ Input parsing failed: {e}"); st.stop()
 
@@ -1376,12 +1422,10 @@ with tab_batch:
                         rd_pdbqt, "redock_" + rd_nm, b_exh, b_nm, b_er)
                     if rd_top is not None:
                         redock_score = rd_top
-                        # Bond-order fix for redock reference
                         rd_pv_sdf = str(BATCH_WORKDIR / f"redock_{rd_nm}_pv_ready.sdf")
                         _fix_sdf_bond_orders(rd_out_sdf, rd_smi, rd_pv_sdf)
                         if not os.path.exists(rd_pv_sdf) or os.path.getsize(rd_pv_sdf) < 10:
                             rd_pv_sdf = rd_out_sdf
-
                         rd_n_poses = 0
                         if rd_out_sdf and os.path.exists(rd_out_sdf):
                             rd_n_poses = sum(
@@ -1430,7 +1474,6 @@ with tab_batch:
                 results.append({"Name": name, "SMILES": smi, "Top Score": None,
                                  "Poses": 0, "Status": "DOCK FAILED"}); continue
 
-            # Bond-order fix per ligand
             pv_sdf = str(BATCH_WORKDIR / f"{name}_pv_ready.sdf")
             _fix_sdf_bond_orders(out_sdf, smi, pv_sdf)
             if not os.path.exists(pv_sdf) or os.path.getsize(pv_sdf) < 10:
@@ -1458,9 +1501,9 @@ with tab_batch:
             "b_confirmed_ref_score": None,
             "b_confirmed_ref_pose":  None,
             "b_confirmed_ref_name":  None,
-            # Invalidate PoseView cache
             "b_pv_image_url": None, "b_pv_image_png": None,
             "b_pv_image_svg": None, "b_pv_pose_key":  None,
+            "b_plot_png":     None,
         })
 
     st.markdown('</div>', unsafe_allow_html=True)
@@ -1496,7 +1539,6 @@ with tab_batch:
             + (f" {_pill(f'{n_fail} failed', 'warn')}" if n_fail else ""),
             unsafe_allow_html=True)
 
-        # ── Pose Browser ──────────────────────────────────────────────────────
         st.markdown("**🔎 Pose Browser**")
         ok_results = [r for r in results
                       if r["Status"] == "OK"
@@ -1568,15 +1610,9 @@ with tab_batch:
                         vb.addModel(Chem.MolToMolBlock(b_mols[b_pose_i]), "mol")
                         vb.setStyle({"model": bmi},
                                      {"stick": {"colorscheme": "cyanCarbon", "radius": 0.28}})
-                        # Pocket surface on receptor residues near the docked pose
-                        vb.addSurface("SES",
-                            {"opacity": 0.2, "color": "lightblue"},
-                            {"model": 0},
-                            {"model": bmi},
-                        )
-                        # Zoom to whole protein, then pan to docked pose
-                        vb.zoomTo()
-                        vb.center({"model": bmi})
+                        vb.addSurface("SES", {"opacity": 0.2, "color": "lightblue"},
+                                      {"model": 0}, {"model": bmi})
+                        vb.zoomTo(); vb.center({"model": bmi})
                         show3d(vb, height=420)
                     except Exception as e:
                         st.info(f"Viewer error: {e}")
@@ -1618,8 +1654,6 @@ with tab_batch:
                             open(sel_res["out_pdbqt"], "rb"),
                             file_name=f"{safe_sel_nm}_out.pdbqt", key="b_dl_pdbqt")
 
-                # ── PoseView 2D Interaction ───────────────────────────────────
-                # Write bond-order-fixed single pose from the per-ligand pv_sdf
                 pv_sdf_all = sel_res.get("pv_sdf", "")
                 sp3_pv     = str(BATCH_WORKDIR / f"{safe_sel_nm}_pose{b_pose_i+1}_pv_ready.sdf")
                 if pv_sdf_all and os.path.exists(pv_sdf_all):
@@ -1631,35 +1665,24 @@ with tab_batch:
                 else:
                     _write_single_pose(b_mols[b_pose_i], sp3_pv)
 
-                # Store SMILES for pose key derivation
                 st.session_state["_b_cur_smiles"] = sel_res.get("SMILES", sel_nm)
 
                 _poseview_ui(
-                    rec_key       = "b_receptor_fh",
-                    raw_sdf_key   = "b_cur_out_sdf",
-                    pv_sdf_key    = "b_cur_pv_sdf",
-                    smiles_key    = "_b_cur_smiles",
-                    pose_idx      = b_pose_i,
-                    pose_sdf_path = sp3_pv,
-                    img_url_key   = "b_pv_image_url",
-                    img_png_key   = "b_pv_image_png",
-                    img_svg_key   = "b_pv_image_svg",
-                    pose_key_key  = "b_pv_pose_key",
-                    btn_key       = "btn_pv_batch",
-                    dl_png_key    = "dl_pv_png_batch",
-                    dl_svg_key    = "dl_pv_svg_batch",
-                    label_suffix  = f"_{safe_sel_nm}",
+                    rec_key="b_receptor_fh", raw_sdf_key="b_cur_out_sdf",
+                    pv_sdf_key="b_cur_pv_sdf", smiles_key="_b_cur_smiles",
+                    pose_idx=b_pose_i, pose_sdf_path=sp3_pv,
+                    img_url_key="b_pv_image_url", img_png_key="b_pv_image_png",
+                    img_svg_key="b_pv_image_svg", pose_key_key="b_pv_pose_key",
+                    btn_key="btn_pv_batch", dl_png_key="dl_pv_png_batch",
+                    dl_svg_key="dl_pv_svg_batch", label_suffix=f"_{safe_sel_nm}",
                 )
 
         st.markdown("---")
-
-        # ── Full docking log ──────────────────────────────────────────────────
         with st.expander("📋 Full docking log", expanded=False):
             st.markdown(
                 f'<div class="log-box">{st.session_state.get("b_batch_log","")}</div>',
                 unsafe_allow_html=True)
 
-        # Score table + dot plot
         df_res = pd.DataFrame([
             {"Name": r["Name"], "Top Score (kcal/mol)": r["Top Score"],
              "Poses": r["Poses"], "Status": r["Status"]}
@@ -1703,39 +1726,122 @@ with tab_batch:
                 for sp in ax.spines.values(): sp.set_edgecolor(_cc["border"])
                 ax.grid(axis="y", color=_cc["bg_sub"], linewidth=0.5)
                 fig.tight_layout()
+                # Save plot bytes to session state BEFORE closing
+                _plot_buf = io.BytesIO()
+                fig.savefig(_plot_buf, format="png", dpi=150, bbox_inches="tight",
+                            facecolor=fig.get_facecolor())
+                _plot_buf.seek(0)
+                st.session_state["b_plot_png"] = _plot_buf.getvalue()
                 st.pyplot(fig, use_container_width=True); plt.close(fig)
 
         st.markdown("---")
-
-        # Bulk downloads
         st.markdown("**⬇ Download All Results**")
-        c_csv, c_zip = st.columns(2)
-        with c_csv:
+
+        # ── Row 1: CSV + Plot + PoseView ──────────────────────────────────────
+        dl_c1, dl_c2, dl_c3 = st.columns(3)
+
+        with dl_c1:
             if not ok_df.empty:
-                st.download_button("⬇ Top scores (.csv)",
+                st.download_button(
+                    "📊 Top scores (.csv)",
                     ok_df.to_csv(index=False).encode(),
-                    file_name="batch_scores.csv", mime="text/csv", key="b_dl_csv")
-        with c_zip:
-            zb = io.BytesIO()
-            zip_results = ([redock_result] if redock_result else []) + ok_results
-            with zipfile.ZipFile(zb, "w", zipfile.ZIP_DEFLATED) as zf:
-                for r in zip_results:
-                    sn = r["Name"].replace("⭐ ", "").replace(" (co-crystal ref)", "")
-                    if r.get("out_sdf") and os.path.exists(r["out_sdf"]):
-                        zf.write(r["out_sdf"], f"poses/{sn}_out.sdf")
-                    if r.get("pv_sdf") and os.path.exists(r["pv_sdf"]):
-                        zf.write(r["pv_sdf"], f"poses_pv_ready/{sn}_pv_ready.sdf")
-                    if r.get("out_pdbqt") and os.path.exists(r["out_pdbqt"]):
-                        zf.write(r["out_pdbqt"], f"pdbqt/{sn}_out.pdbqt")
-                if not ok_df.empty:
-                    zf.writestr("batch_scores.csv", ok_df.to_csv(index=False))
-                rec_fh = st.session_state.get("b_receptor_fh")
-                if rec_fh and os.path.exists(rec_fh):
-                    zf.write(rec_fh, "receptor.pdb")
-            zb.seek(0)
-            st.download_button("⬇ All results (.zip)", zb,
-                file_name="batch_docking_results.zip",
-                mime="application/zip", key="b_dl_zip")
+                    file_name="batch_scores.csv",
+                    mime="text/csv",
+                    key="b_dl_csv",
+                    use_container_width=True,
+                )
+
+        with dl_c2:
+            _plot_bytes = st.session_state.get("b_plot_png")
+            if _plot_bytes:
+                st.download_button(
+                    "📈 Score plot (.png)",
+                    data=_plot_bytes,
+                    file_name="batch_score_plot.png",
+                    mime="image/png",
+                    key="b_dl_plot_png",
+                    use_container_width=True,
+                )
+            else:
+                st.caption("Run docking to generate the score plot.")
+
+        with dl_c3:
+            _pv_png  = st.session_state.get("b_pv_image_png")
+            _pv_svg  = st.session_state.get("b_pv_image_svg")
+            _pv_url  = st.session_state.get("b_pv_image_url")
+            _cur_lig = st.session_state.get("_b_cur_smiles", "ligand")[:20]
+
+            if _pv_png:
+                st.download_button(
+                    "🧬 2D interaction (.png)",
+                    data=_pv_png,
+                    file_name="poseview_2d_interaction.png",
+                    mime="image/png",
+                    key="b_dl_pv_png_bulk",
+                    use_container_width=True,
+                )
+            elif _pv_svg:
+                st.download_button(
+                    "🧬 2D interaction (.svg)",
+                    data=_pv_svg,
+                    file_name="poseview_2d_interaction.svg",
+                    mime="image/svg+xml",
+                    key="b_dl_pv_svg_bulk",
+                    use_container_width=True,
+                )
+            else:
+                st.caption("Generate a 2D diagram above to enable this download.")
+
+        # If both PNG and SVG are available, show SVG button too
+        if _pv_png and _pv_svg:
+            st.download_button(
+                "🧬 2D interaction (.svg — vector, for publications)",
+                data=_pv_svg,
+                file_name="poseview_2d_interaction.svg",
+                mime="image/svg+xml",
+                key="b_dl_pv_svg_bulk2",
+                use_container_width=True,
+            )
+
+        st.markdown("---")
+
+        # ── Row 2: Full ZIP ───────────────────────────────────────────────────
+        zb = io.BytesIO()
+        zip_results = ([redock_result] if redock_result else []) + ok_results
+        with zipfile.ZipFile(zb, "w", zipfile.ZIP_DEFLATED) as zf:
+            for r in zip_results:
+                sn = r["Name"].replace("⭐ ", "").replace(" (co-crystal ref)", "")
+                if r.get("out_sdf") and os.path.exists(r["out_sdf"]):
+                    zf.write(r["out_sdf"], f"poses/{sn}_out.sdf")
+                if r.get("pv_sdf") and os.path.exists(r["pv_sdf"]):
+                    zf.write(r["pv_sdf"], f"poses_pv_ready/{sn}_pv_ready.sdf")
+                if r.get("out_pdbqt") and os.path.exists(r["out_pdbqt"]):
+                    zf.write(r["out_pdbqt"], f"pdbqt/{sn}_out.pdbqt")
+            if not ok_df.empty:
+                zf.writestr("batch_scores.csv", ok_df.to_csv(index=False))
+            # Include plot PNG in ZIP
+            _plot_bytes_zip = st.session_state.get("b_plot_png")
+            if _plot_bytes_zip:
+                zf.writestr("batch_score_plot.png", _plot_bytes_zip)
+            # Include PoseView images in ZIP
+            _pv_png_zip = st.session_state.get("b_pv_image_png")
+            _pv_svg_zip = st.session_state.get("b_pv_image_svg")
+            if _pv_png_zip:
+                zf.writestr("poseview/2d_interaction.png", _pv_png_zip)
+            if _pv_svg_zip:
+                zf.writestr("poseview/2d_interaction.svg", bytes(_pv_svg_zip))
+            rec_fh = st.session_state.get("b_receptor_fh")
+            if rec_fh and os.path.exists(rec_fh):
+                zf.write(rec_fh, "receptor.pdb")
+        zb.seek(0)
+        st.download_button(
+            "📦 Download ALL results (.zip) — structures + plot + 2D diagram",
+            zb,
+            file_name="batch_docking_results.zip",
+            mime="application/zip",
+            key="b_dl_zip",
+            use_container_width=True,
+        )
 
     st.markdown('</div>', unsafe_allow_html=True)
 
