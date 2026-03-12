@@ -2,26 +2,6 @@
 
 A cloud-ready molecular docking workflow converted from the original Google Colab notebook.
 
-## Deploy to Streamlit Cloud
-
-1. Push this folder to a GitHub repository
-2. Go to [share.streamlit.io](https://share.streamlit.io) and connect the repo
-3. Set **Main file path** to `app.py`
-4. Click **Deploy** — Streamlit Cloud handles all package installation automatically
-
-## Run Locally
-
-```bash
-# Install system dependencies (Ubuntu/Debian)
-sudo apt-get install openbabel wget curl
-
-# Install Python dependencies
-pip install -r requirements.txt
-
-# Launch the app
-streamlit run app.py
-```
-
 ## Workflow (top to bottom)
 
 | Step | What it does |
