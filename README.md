@@ -12,6 +12,23 @@ Anyone Can Dock makes protein-ligand docking accessible through a **zero-install
 
 ---
 
+### Interactive Tutorial & Hands-on Exercises
+
+**Ready to start docking?**
+
+📘 **[👉 CLICK HERE TO ACCESS THE TUTORIAL](https://nyelidl.github.io/docking_workshop/)**
+
+🌐 https://nyelidl.github.io/docking_workshop/
+
+### 📢 Follow Anyone Can Dock
+
+Stay connected for software updates, tutorials,
+workshops, and research highlights.
+
+👉 [Follow us on Facebook](https://www.facebook.com/anyonecandock/)
+
+---
+
 ## 🚀 Four ways to use Anyone Can Dock (ACD)
 
 | Feature | 🌐 ACD Online | 🖥️ ACD Local | ⌨️ ACD CLI | 📓 Google Colab |
@@ -29,6 +46,8 @@ Anyone Can Dock makes protein-ligand docking accessible through a **zero-install
 | Start here | [Open Online →](https://nyelidl.github.io/anyone-docking/) | [Local installation](#-acd-local) | `pip install anyonecandock` | [Open in Colab →](https://colab.research.google.com/drive/1tApXZyT3CGziMTLG86oQe6Q7WSycK196?usp=sharing) |
 
 **Tip:** Choose Online for the fastest start, Local for an interactive workflow on your computer, CLI for scripts, or Colab for its additional docking engines. Vina-GPU requires a compatible Colab GPU runtime.
+
+For the web-interfaced via Google colab: [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/drive/1WtWYUUB1AREZMeB5qEJ9OD84AvWk1z4z?usp=sharing)
 
 ---
 
@@ -480,6 +499,7 @@ If you use ACD in research, please cite the relevant methods used in your workfl
 ## 📜 License
 
 MIT License — see [LICENSE](LICENSE) for details.
+[![Facebook](https://img.shields.io/badge/Facebook-Follow_Anyone_Can_Dock-1877F2?logo=facebook&logoColor=white)](https://www.facebook.com/anyonecandock/)
 
 ---
 
